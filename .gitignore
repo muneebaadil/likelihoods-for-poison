@@ -1,7 +1,5 @@
 literature/
 datasets/
 experiments/
-
 .vscode/
-
-
+.idea/
