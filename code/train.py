@@ -13,11 +13,13 @@ def get_opts():
     import os
     import subprocess
     import yaml
+    import sys
 
     parser = argparse.ArgumentParser(description='Training Script')
 
     # config file (optional)
-    parser.add_argument('--config_path', action='store', type=str, default='.')
+    # REMOVING CONFIG PATH OPTION FOR NOW
+    # parser.add_argument('--config_path', action='store', type=str, default='.')
     parser.add_argument('--debug', action='store_true', help='flag for '
                         'testing/debugging purposes')
     # data
@@ -47,7 +49,7 @@ def get_opts():
     parser.add_argument('--lr', action='store', type=float, default=.02,
                         help='learning rate')
     parser.add_argument('--lr_scheduler', action='store', type=str,
-                        default='stepLR', help='learning rate scheduler algo')
+                        default='none', help='learning rate scheduler algo')
     parser.add_argument('--step_size', action='store', type=int, default=1,
                         help='step size for stepLR')
     parser.add_argument('--gamma', action='store', type=float, default=0.1,
@@ -114,12 +116,13 @@ def get_opts():
 
     opts.shuffle = True if not opts.no_shuffle else False
     opts.git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
+    opts.command = ' '.join(sys.argv)
 
     # overwrite by config file settings if supplied
-    if opts.config_path != '.':
-        cfg = yaml.load(open(opts.config_path))
-        for k, v in cfg.items():
-            setattr(opts, k, v)
+    # if opts.config_path != '.':
+    #     cfg = yaml.load(open(opts.config_path))
+    #     for k, v in cfg.items():
+    #         setattr(opts, k, v)
     return opts
 
 
