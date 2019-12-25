@@ -60,8 +60,7 @@ class Logger(object):
             ))
         else:
             self.loss_test[epoch] /= float(n_batches)
-            self.writer.add_scalars('loss',
-                                    {'val': self.loss_test[epoch]},
+            self.writer.add_scalar('val_loss', self.loss_test[epoch],
                                     (epoch + 1) * n_batches)
 
             self.logger.info('Epoch [%3d/%3d]: Testing Loss %.3f' % (
@@ -76,8 +75,8 @@ class Logger(object):
 
             # write log to tensorboard and log.log in experiment folder
             if iter % self.opts.log_every == 0:
-                self.writer.add_scalars('loss', {'training': loss}, iter)
-                self.writer.add_scalar('learning_rate', lr, iter)
+                self.writer.add_scalar('train_loss', loss, iter)
+                # self.writer.add_scalar('learning_rate', lr, iter)
 
                 log_str = ('Epoch [%3d/%3d], Iter [%3d/%3d]: loss = %.3f,'
                            ' lr = %.3f' % (

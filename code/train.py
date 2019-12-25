@@ -107,9 +107,8 @@ def get_opts():
     opts.save_dir = os.path.join(opts.log_dir, opts.exp_name)
     opts.save_dir_model = os.path.join(opts.save_dir, 'models')
     opts.save_dir_result = os.path.join(opts.save_dir, 'results')
-    opts.save_dir_tensorboard = os.path.join(opts.save_dir, 'tensorboard')
-    for d in [opts.save_dir, opts.save_dir_model, opts.save_dir_result,
-              opts.save_dir_tensorboard]:
+    opts.save_dir_tensorboard = opts.save_dir
+    for d in [opts.save_dir, opts.save_dir_model, opts.save_dir_result]:
         if os.path.exists(d):
             os.system('rm -rf {}'.format(d))
         os.makedirs(d)
@@ -177,7 +176,9 @@ def train(loader, model, criterion, optimizer, lr_scheduler, logger, device,
 
     logger.log_epoch(curr_epoch, len(loader))
 
-    return curr_global_iter, curr_epoch < n_epochs
+
+
+    return curr_global_iter, not (curr_epoch < n_epochs)
 
 
 def validate(loader, model, criterion, lr_scheduler, logger, device,
@@ -194,7 +195,7 @@ def validate(loader, model, criterion, lr_scheduler, logger, device,
         logger.log_iter(curr_epoch, curr_global_iter, loss.data, None, False)
         loader_iterable.set_postfix(loss=loss.data.tolist())
 
-    logger.log_epoch(curr_epoch, len(train_loader), False, model=model)
+    logger.log_epoch(curr_epoch, len(loader), False, model=model)
 
     if lr_scheduler:
         lr_scheduler.step()
