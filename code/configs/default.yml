@@ -1,0 +1,36 @@
+# data
+dataset: 'mnist'
+data_path: '../datasets/'
+transforms: None
+n_workers: 5
+no_shuffle: False
+
+# model/network
+model: 'lenet5'
+print_model: True
+n_classes: 10
+ckpt_path: None
+
+# training
+n_epochs: 1
+optimizer: 'adam'
+lr: 0.002
+lr_scheduler: 'stepLR'
+step_size: 1
+gamma: 0.1
+train_batch_size: 32
+test_batch_size: 32
+criterion: 'CrossEntropyLoss'
+
+# logging
+log_dir: '../experiments/'
+hist_freq: -1
+exp_name: 'default-config'
+save_every_ckpt: False
+
+# cpu/gpu config
+cpu: False
+gpu_ids: '0'
+
+# seeding
+seed: None
