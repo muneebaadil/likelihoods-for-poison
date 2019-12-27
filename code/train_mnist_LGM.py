@@ -13,8 +13,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-batch_size = 16
-
 def visualize(feat, labels, epoch):
     plt.ion()
     c = ['#ff0000', '#ffff00', '#00ff00', '#00ffff', '#0000ff',
@@ -23,8 +21,8 @@ def visualize(feat, labels, epoch):
     for i in range(10):
         plt.plot(feat[labels == i, 0], feat[labels == i, 1], '.', c=c[i])
     plt.legend(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], loc='upper right')
-    #   plt.xlim(xmin=-5,xmax=5)
-    #   plt.ylim(ymin=-5,ymax=5)
+    plt.xlim(xmin=-7,xmax=7)
+    plt.ylim(ymin=-7,ymax=7)
     plt.text(-4.8, 4.6, "epoch=%d" % epoch)
     plt.savefig('./images/LGM_loss_epoch=%d.jpg' % epoch)
     # plt.draw()
@@ -60,9 +58,8 @@ def train(train_loader, model, criterion, optimizer, epoch, loss_weight, use_cud
             target = target.cuda()
         data, target = Variable(data), Variable(target)
 
-        feats, _ = model(data)
+        _, feats = model(data)
         logits, mlogits, likelihood = criterion[1](feats, target)
-        # cross_entropy = criterion[0](logits, target)
         loss = criterion[0](mlogits, target) + loss_weight * likelihood
 
         _, predicted = torch.max(logits.data, 1)
@@ -80,11 +77,11 @@ def train(train_loader, model, criterion, optimizer, epoch, loss_weight, use_cud
         idx_loader.append((target))
         if (i + 1) % 50 == 0:
             print('Epoch [%d], Iter [%d/%d] Loss: %.4f Acc %.4f'
-                  % (epoch, i + 1, len(train_loader) // batch_size, loss.item(), accuracy))
+                  % (epoch, i + 1, len(train_loader), loss.item(), accuracy))
 
-    #feat = torch.cat(ip1_loader, 0)
-    #labels = torch.cat(idx_loader, 0)
-    #visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch)
+    feat = torch.cat(ip1_loader, 0)
+    labels = torch.cat(idx_loader, 0)
+    visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch)
 
 
 def main():
@@ -93,18 +90,19 @@ def main():
     #else:
     #    use_cuda = False
 
-    use_cuda = False
+    use_cuda = True
+    batch_size = 64
 
     # Dataset
     trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))]))
-    train_loader = DataLoader(trainset, batch_size=100, shuffle=True, num_workers=4)
+    train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
 
     testset = datasets.MNIST('../datasets/', download=True, train=False, transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))]))
-    test_loader = DataLoader(testset, batch_size=100, shuffle=True, num_workers=4)
+    test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, num_workers=4)
 
     # Model
     model = Net()
