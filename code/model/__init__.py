@@ -9,6 +9,9 @@ def get_model(opts, logger):
     elif opts.model == 'lenet5':
         import model.lenet5
         model = model.lenet5.LeNet5()
+    elif opts.model == 'mnistnet':
+        import model.mnistnet
+        model = model.mnistnet.MNISTNet()
     else:
         raise NotImplementedError()
 

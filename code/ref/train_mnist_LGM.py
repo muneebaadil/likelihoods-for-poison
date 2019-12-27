@@ -6,8 +6,9 @@ from torch.autograd import Variable
 from torchvision import datasets
 from torch.utils.data import DataLoader
 import torch.optim.lr_scheduler as lr_scheduler
-import model_utils
-from model_utils import Net
+from model.mnistnet import MNISTNet
+from model.lgm import LGMLoss_v0, LGMLoss
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -49,8 +50,10 @@ def test(test_loder, criterion, model, use_cuda):
 
 
 def train(train_loader, model, criterion, optimizer, epoch, loss_weight, use_cuda):
-    ip1_loader = []
-    idx_loader = []
+
+    #ip1_loader = []
+    #idx_loader = []
+
     for i, (data, target) in enumerate(train_loader):
         if use_cuda:
             data = data.cuda()
@@ -79,9 +82,9 @@ def train(train_loader, model, criterion, optimizer, epoch, loss_weight, use_cud
             print('Epoch [%d], Iter [%d/%d] Loss: %.4f Acc %.4f'
                   % (epoch, i + 1, len(train_loader) // batch_size, loss.data[0], accuracy))
 
-    feat = torch.cat(ip1_loader, 0)
-    labels = torch.cat(idx_loader, 0)
-    visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch)
+    #feat = torch.cat(ip1_loader, 0)
+    #labels = torch.cat(idx_loader, 0)
+    #visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch)
 
 
 def main():
@@ -89,38 +92,43 @@ def main():
         use_cuda = True
     else:
         use_cuda = False
+
     # Dataset
-    trainset = datasets.MNIST('./data/', download=True, train=True, transform=transforms.Compose([
+    trainset = datasets.MNIST('../../datasets/', download=True, train=True, transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))]))
     train_loader = DataLoader(trainset, batch_size=100, shuffle=True, num_workers=4)
 
-    testset = datasets.MNIST('./data/', download=True, train=False, transform=transforms.Compose([
+    testset = datasets.MNIST('../../datasets/', download=True, train=False, transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))]))
     test_loader = DataLoader(testset, batch_size=100, shuffle=True, num_workers=4)
 
     # Model
-    model = Net()
+    model = MNISTNet()
 
     # NLLLoss
     nllloss = nn.CrossEntropyLoss()
     # CenterLoss
     loss_weight = 0.1
-    lgm_loss = model_utils.LGMLoss_v0(10, 2, 1.0)
+    lgm_loss = LGMLoss_v0(10, 2, 1.0)
+
     if use_cuda:
         nllloss = nllloss.cuda()
         lgm_loss = lgm_loss.cuda()
         model = model.cuda()
+
     criterion = [nllloss, lgm_loss]
+
     # optimzer4nn
     optimizer4nn = optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=0.0005)
-    sheduler = lr_scheduler.StepLR(optimizer4nn, 20, gamma=0.8)
-
     # optimzer4center
     optimzer4center = optim.SGD(lgm_loss.parameters(), lr=0.1)
 
+    sheduler = lr_scheduler.StepLR(optimizer4nn, 20, gamma=0.8)
+
     for epoch in range(100):
+
         sheduler.step()
         # print optimizer4nn.param_groups[0]['lr']
         train(train_loader, model, criterion, [optimizer4nn, optimzer4center], epoch + 1, loss_weight, use_cuda)

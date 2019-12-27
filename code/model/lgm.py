@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.autograd.function import Function
-import torch.nn.functional as F
 from torch.autograd import Variable
 
 
@@ -46,6 +44,7 @@ class LGMLoss(nn.Module):
         margin_logits = -0.5 * (tslog_covs + margin_dist)  # eq.(17)
         logits = -0.5 * (tslog_covs + dist)
 
+        # calc of L_lkd
         cdiff = feat - torch.index_select(self.centers, dim=0, index=label.long())
         cdist = cdiff.pow(2).sum(1).sum(0) / 2.0
 
@@ -72,19 +71,23 @@ class LGMLoss_v0(nn.Module):
     def forward(self, feat, label):
         batch_size = feat.shape[0]
 
+        # calc of d_k
         diff = torch.unsqueeze(feat, dim=1) - torch.unsqueeze(self.centers, dim=0)
         diff = torch.mul(diff, diff)
-        dist = torch.sum(diff, dim=-1)
+        dist = torch.sum(diff, dim=-1)              # eq.(18)
 
+        # calc of 1 + I(k = z_i)*alpha
         y_onehot = torch.FloatTensor(batch_size, self.num_classes)
         y_onehot.zero_()
-        y_onehot = Variable(y_onehot).cuda()
+        y_onehot = Variable(y_onehot)
         y_onehot.scatter_(1, torch.unsqueeze(label, dim=-1), self.alpha)
         y_onehot = y_onehot + 1.0
+
         margin_dist = torch.mul(dist, y_onehot)
-        margin_logits = -0.5 * margin_dist
+        margin_logits = -0.5 * margin_dist          # eq.(17)
         logits = -0.5 * dist
 
+        # calc of L_lkd
         cdiff = feat - torch.index_select(self.centers, dim=0, index=label.long())
         likelihood = (1.0 / batch_size) * cdiff.pow(2).sum(1).sum(0) / 2.0
         return logits, margin_logits, likelihood

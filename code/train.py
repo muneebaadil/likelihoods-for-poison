@@ -5,7 +5,6 @@ import logger as lg
 
 from tqdm import tqdm
 
-
 def get_opts():
     import argparse
     from time import gmtime, strftime
@@ -123,7 +122,8 @@ def get_opts():
     return opts
 
 
-def get_optimizer(opts, model):
+def get_optimizer(opts, model, **kwargs):
+
     from torch import optim
     # set optimizer
     if opts.optimizer == 'sgd':
@@ -131,6 +131,11 @@ def get_optimizer(opts, model):
                               momentum=opts.momentum)
     elif opts.optimizer == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=opts.lr)
+
+    elif opts.optimizer == 'lgm':
+        from optimizer.lgm_optimizer import LGMOptimizer
+        optimizer = LGMOptimizer(model.parameters(), kwargs['lgm_loss'].parameters(),
+                                 lr=opts.lr, momentum=0.9, wd=0.0005)
     else:
         raise NotImplementedError()
 
@@ -202,7 +207,11 @@ logger = lg.get_logger(opts)
 train_loader, val_loader = dt.get_loaders(opts)
 model = m.get_model(opts, logger)
 criterion = cr.get_criterion(opts)
-optimizer, lr_scheduler = get_optimizer(opts, model)
+
+from criterion.lgm_criterion import LGMCriterion
+
+optimizer, lr_scheduler = get_optimizer(opts, model,
+        lgm_loss =criterion.lgm_loss if isinstance(criterion, LGMCriterion) else None)
 
 terminate = False
 curr_epoch, curr_global_iter = 0, 0
