@@ -4,7 +4,7 @@ import pdb
 
 class CNNModel(nn.Module):
 
-    def __init__(self):
+    def __init__(self, n_feats):
     
         super(CNNModel, self).__init__()
 
@@ -36,10 +36,10 @@ class CNNModel(nn.Module):
         # we take features computer after the pool2 step.
         # we have 16 maps, each of size 4x4. We will flatten them
         self.fc1 = nn.Linear(in_features=16*4*4, out_features=120)
-        self.fc2 = nn.Linear(in_features=120, out_features=84)
+        self.fc2 = nn.Linear(in_features=120, out_features=n_feats)
 
         ## and a last FC layer for predictions
-        self.fc3 = nn.Linear(in_features=84, out_features=10)
+        self.fc3 = nn.Linear(in_features=n_feats, out_features=10)
 
     def forward(self, x):
         x = self.pool1(F.relu(self.conv1(x)))
@@ -48,7 +48,7 @@ class CNNModel(nn.Module):
         # flatten
         x = x.view(-1, 16 * 4 * 4)
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        feats = F.relu(self.fc2(x))
+        x = self.fc3(feats)
 
-        return x, None
+        return x, feats

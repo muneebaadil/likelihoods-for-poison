@@ -2,6 +2,8 @@ import data as dt
 import model as m
 import criterion as cr
 import logger as lg
+
+import torch
 import torch.optim as optim
 
 from tqdm import tqdm
@@ -116,6 +118,8 @@ def get_opts():
     for d in [opts.save_dir, opts.save_dir_model, opts.save_dir_result]:
         if os.path.exists(d):
             os.system('rm -rf {}'.format(d))
+            # TODO: FOR SOME REASON, PREVIOUS TFEVENTS FILE IS NOT BEING REMOVED.
+            # LOOK INTO THIS LATER.
             print("removing existing {} directory...".format(d))
         os.makedirs(d)
 
@@ -187,18 +191,26 @@ def train(loader, model, criterion, optimizer, lr_scheduler, logger, device,
 def validate(loader, model, criterion, lr_scheduler, logger, device,
              curr_epoch, curr_global_iter):
     model.eval()
+    val_feats, val_labels = [], []
 
     logger.logger.info("Validating...")
     loader_iterable = tqdm(loader)
     for (X_val, Y_val) in loader_iterable:
         X_val, Y_val = X_val.to(device), Y_val.to(device)
-        Y_pred, _ = model(X_val)
+        Y_pred, X_feats = model(X_val)
         loss = criterion(Y_pred, Y_val)
+
+        val_feats.append(X_feats.data)
+        val_labels.append(Y_val.data)
 
         logger.log_iter(curr_epoch, curr_global_iter, loss.data, None, False)
         loader_iterable.set_postfix(loss=loss.data.tolist())
 
     logger.log_epoch(curr_epoch, len(loader), False, model=model)
+
+    val_feats = torch.cat(val_feats, dim=0)
+    val_labels = torch.cat(val_labels, dim=0)
+    logger.draw_features(curr_global_iter, val_feats, val_labels)
 
     if lr_scheduler:
         lr_scheduler.step()

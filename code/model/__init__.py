@@ -11,7 +11,10 @@ def get_model(opts, logger):
         model = model.lenet5.LeNet5(opts.n_feats, opts.n_classes)
     elif opts.model == 'cnn':
         import model.cnn as cnn
-        model = cnn.CNNModel()
+        model = cnn.CNNModel(opts.n_feats)
+    elif opts.model == 'net':
+        import model.net as net
+        model = net.Net()
     else:
         raise NotImplementedError()
 
