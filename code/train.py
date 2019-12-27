@@ -2,8 +2,10 @@ import data as dt
 import model as m
 import criterion as cr
 import logger as lg
+import torch.optim as optim
 
 from tqdm import tqdm
+import pdb
 
 
 def get_opts():
@@ -37,6 +39,9 @@ def get_opts():
                         help='model name')
     parser.add_argument('--print_model', action='store_true',
                         help='show model heirarchy on console')
+    parser.add_argument('--n_feats', action='store', type=int, default=2,
+                        help='number of features in the second last layer of the'
+                        'model')
     parser.add_argument('--n_classes', action='store', type=int,
                         default=10, help='number of classes in the dataset')
     parser.add_argument('--ckpt_path', action='store', type=str, default=None,
@@ -55,7 +60,7 @@ def get_opts():
     parser.add_argument('--gamma', action='store', type=float, default=0.1,
                         help='gamma param for stepLR algo')
     parser.add_argument('--train_batch_size', action='store', type=int,
-                        default=32)
+                        default=128)
     parser.add_argument('--val_batch_size', action='store', type=int,
                         default=32)
     parser.add_argument('--criterion', action='store', type=str,
@@ -161,24 +166,21 @@ def train(loader, model, criterion, optimizer, lr_scheduler, logger, device,
     for (X_train, Y_train) in loader_iterable:
         X_train, Y_train = X_train.to(device), Y_train.to(device)
 
+        optimizer.zero_grad()
         Y_pred = model(X_train)
         loss = criterion(Y_pred, Y_train)
 
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         logger.log_iter(curr_epoch, curr_global_iter, loss.data,
                         get_lr(optimizer), model=model)
         curr_global_iter += 1
-        loader_iterable.set_postfix(
-            loss=loss.data.tolist(), lr=get_lr(optimizer))
+        loader_iterable.set_postfix(loss=loss.data.tolist())
 
     logger.log_epoch(curr_epoch, len(loader))
 
-
-
-    return curr_global_iter, not (curr_epoch < n_epochs)
+    return curr_global_iter, not (curr_epoch + 1 < n_epochs)
 
 
 def validate(loader, model, criterion, lr_scheduler, logger, device,
@@ -189,7 +191,7 @@ def validate(loader, model, criterion, lr_scheduler, logger, device,
     loader_iterable = tqdm(loader)
     for (X_val, Y_val) in loader_iterable:
         X_val, Y_val = X_val.to(device), Y_val.to(device)
-        Y_pred = model(X_val)
+        Y_pred, _ = model(X_val)
         loss = criterion(Y_pred, Y_val)
 
         logger.log_iter(curr_epoch, curr_global_iter, loss.data, None, False)
@@ -206,7 +208,15 @@ logger = lg.get_logger(opts)
 train_loader, val_loader = dt.get_loaders(opts)
 model = m.get_model(opts, logger)
 criterion = cr.get_criterion(opts)
-optimizer, lr_scheduler = get_optimizer(opts, model)
+# optimizer, lr_scheduler = get_optimizer(opts, model)
+if opts.optimizer == 'sgd':
+    optimizer = optim.SGD(model.parameters(), lr=opts.lr,
+                            momentum=opts.momentum)
+elif opts.optimizer == 'adam':
+    optimizer = optim.Adam(model.parameters(), lr=opts.lr)
+else:
+    raise NotImplementedError()
+lr_scheduler = None
 
 terminate = False
 curr_epoch, curr_global_iter = 0, 0

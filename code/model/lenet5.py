@@ -21,9 +21,9 @@ class LeNet5(nn.Module):
     F7 - 10 (Output)
     """
 
-    def __init__(self):
+    def __init__(self, n_feats, n_classes):
         super(LeNet5, self).__init__()
-
+        self.n_feats = n_feats
         self.convnet = nn.Sequential(OrderedDict([
             ('c1', nn.Conv2d(1, 6, kernel_size=(5, 5))),
             ('relu1', nn.ReLU()),
@@ -35,15 +35,16 @@ class LeNet5(nn.Module):
             ('relu5', nn.ReLU())
         ]))
 
-        self.fc = nn.Sequential(OrderedDict([
-            ('f6', nn.Linear(120, 84)),
+        self.feats = nn.Sequential(OrderedDict([
+            ('f6', nn.Linear(120, n_feats)),
             ('relu6', nn.ReLU()),
-            ('f7', nn.Linear(84, 10)),
-            ('sig7', nn.LogSoftmax(dim=-1))
         ]))
 
+        self.out = nn.Linear(n_feats, n_classes)
+
     def forward(self, img):
-        output = self.convnet(img)
-        output = output.view(output.size(0), -1)
-        output = self.fc(output)
-        return output
+        temp = self.convnet(img)
+        temp = temp.view(temp.size(0), -1)
+        feats = self.feats(temp)
+        output = self.out(feats)
+        return output, feats
