@@ -116,6 +116,7 @@ def get_opts():
     for d in [opts.save_dir, opts.save_dir_model, opts.save_dir_result]:
         if os.path.exists(d):
             os.system('rm -rf {}'.format(d))
+            print("removing existing {} directory...".format(d))
         os.makedirs(d)
 
     opts.shuffle = True if not opts.no_shuffle else False
@@ -167,7 +168,7 @@ def train(loader, model, criterion, optimizer, lr_scheduler, logger, device,
         X_train, Y_train = X_train.to(device), Y_train.to(device)
 
         optimizer.zero_grad()
-        Y_pred = model(X_train)
+        Y_pred, _ = model(X_train)
         loss = criterion(Y_pred, Y_train)
 
         loss.backward()

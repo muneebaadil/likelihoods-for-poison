@@ -51,4 +51,4 @@ class CNNModel(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
 
-        return x
+        return x, None
