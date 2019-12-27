@@ -144,10 +144,6 @@ def get_optimizer(opts, model, **kwargs):
     elif opts.optimizer == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=opts.lr)
 
-    elif opts.optimizer == 'lgm':
-        from optimizer.lgm_optimizer import LGMOptimizer
-        optimizer = LGMOptimizer(model.parameters(), kwargs['lgm_loss'].parameters(),
-                                 lr=opts.lr, momentum=0.9, wd=0.0005)
     else:
         raise NotImplementedError()
 

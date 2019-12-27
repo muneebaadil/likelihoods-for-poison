@@ -6,13 +6,13 @@ from torch.autograd import Variable
 from torchvision import datasets
 from torch.utils.data import DataLoader
 import torch.optim.lr_scheduler as lr_scheduler
-import model_utils
-from model_utils import Net
+from model.net import Net
+from model.lgm import LGMLoss_v0, LGMLoss
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-batch_size = 100
 
 def visualize(feat, labels, epoch):
     plt.ion()
@@ -94,6 +94,8 @@ def main():
         use_cuda = True
     else:
         use_cuda = False
+
+    batch_size = 100
     # Dataset
     trainset = datasets.MNIST('./data/', download=True, train=True, transform=transforms.Compose([
         transforms.ToTensor(),
@@ -112,7 +114,7 @@ def main():
     nllloss = nn.CrossEntropyLoss()
     # CenterLoss
     loss_weight = 0.1
-    lgm_loss = model_utils.LGMLoss(10, 2, 0.00)
+    lgm_loss = LGMLoss(10, 2, 0.00)
     if use_cuda:
         nllloss = nllloss.cuda()
         lgm_loss = lgm_loss.cuda()
