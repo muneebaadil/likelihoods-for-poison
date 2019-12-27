@@ -33,4 +33,5 @@ class Net(nn.Module):
         x = x.view(-1, 128 * 3 * 3)
         ip1 = self.preluip1(self.ip1(x))
         ip2 = self.ip2(ip1)
-        return ip1, ip2
+
+        return ip2, ip1

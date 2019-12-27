@@ -8,10 +8,13 @@ def get_model(opts, logger):
         model = models.alexnet(pretrained=False)
     elif opts.model == 'lenet5':
         import model.lenet5
-        model = model.lenet5.LeNet5()
-    elif opts.model == 'mnistnet':
-        import model.mnistnet
-        model = model.mnistnet.MNISTNet()
+        model = model.lenet5.LeNet5(opts.n_feats, opts.n_classes)
+    elif opts.model == 'cnn':
+        import model.cnn as cnn
+        model = cnn.CNNModel(opts.n_feats)
+    elif opts.model == 'net':
+        import model.net as net
+        model = net.Net()
     else:
         raise NotImplementedError()
 

@@ -1,5 +1,6 @@
 literature/
-data/
-.idea/
-experiments/
 datasets/
+experiments/
+.vscode/
+.idea/
+*.pyc

@@ -3,7 +3,11 @@ import model as m
 import criterion as cr
 import logger as lg
 
+import torch
+import torch.optim as optim
+
 from tqdm import tqdm
+import pdb
 
 def get_opts():
     import argparse
@@ -12,11 +16,13 @@ def get_opts():
     import os
     import subprocess
     import yaml
+    import sys
 
     parser = argparse.ArgumentParser(description='Training Script')
 
     # config file (optional)
-    parser.add_argument('--config_path', action='store', type=str, default='.')
+    # REMOVING CONFIG PATH OPTION FOR NOW
+    # parser.add_argument('--config_path', action='store', type=str, default='.')
     parser.add_argument('--debug', action='store_true', help='flag for '
                         'testing/debugging purposes')
     # data
@@ -34,6 +40,9 @@ def get_opts():
                         help='model name')
     parser.add_argument('--print_model', action='store_true',
                         help='show model heirarchy on console')
+    parser.add_argument('--n_feats', action='store', type=int, default=2,
+                        help='number of features in the second last layer of the'
+                        'model')
     parser.add_argument('--n_classes', action='store', type=int,
                         default=10, help='number of classes in the dataset')
     parser.add_argument('--ckpt_path', action='store', type=str, default=None,
@@ -46,13 +55,13 @@ def get_opts():
     parser.add_argument('--lr', action='store', type=float, default=.02,
                         help='learning rate')
     parser.add_argument('--lr_scheduler', action='store', type=str,
-                        default='stepLR', help='learning rate scheduler algo')
+                        default='none', help='learning rate scheduler algo')
     parser.add_argument('--step_size', action='store', type=int, default=1,
                         help='step size for stepLR')
     parser.add_argument('--gamma', action='store', type=float, default=0.1,
                         help='gamma param for stepLR algo')
     parser.add_argument('--train_batch_size', action='store', type=int,
-                        default=32)
+                        default=128)
     parser.add_argument('--val_batch_size', action='store', type=int,
                         default=32)
     parser.add_argument('--criterion', action='store', type=str,
@@ -104,21 +113,24 @@ def get_opts():
     opts.save_dir = os.path.join(opts.log_dir, opts.exp_name)
     opts.save_dir_model = os.path.join(opts.save_dir, 'models')
     opts.save_dir_result = os.path.join(opts.save_dir, 'results')
-    opts.save_dir_tensorboard = os.path.join(opts.save_dir, 'tensorboard')
-    for d in [opts.save_dir, opts.save_dir_model, opts.save_dir_result,
-              opts.save_dir_tensorboard]:
+    opts.save_dir_tensorboard = opts.save_dir
+    for d in [opts.save_dir, opts.save_dir_model, opts.save_dir_result]:
         if os.path.exists(d):
             os.system('rm -rf {}'.format(d))
+            # TODO: FOR SOME REASON, PREVIOUS TFEVENTS FILE IS NOT BEING REMOVED.
+            # LOOK INTO THIS LATER.
+            print("removing existing {} directory...".format(d))
         os.makedirs(d)
 
     opts.shuffle = True if not opts.no_shuffle else False
     opts.git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
+    opts.command = ' '.join(sys.argv)
 
     # overwrite by config file settings if supplied
-    if opts.config_path != '.':
-        cfg = yaml.load(open(opts.config_path))
-        for k, v in cfg.items():
-            setattr(opts, k, v)
+    # if opts.config_path != '.':
+    #     cfg = yaml.load(open(opts.config_path))
+    #     for k, v in cfg.items():
+    #         setattr(opts, k, v)
     return opts
 
 
@@ -164,39 +176,46 @@ def train(loader, model, criterion, optimizer, lr_scheduler, logger, device,
     for (X_train, Y_train) in loader_iterable:
         X_train, Y_train = X_train.to(device), Y_train.to(device)
 
-        Y_pred = model(X_train)
+        optimizer.zero_grad()
+        Y_pred, _ = model(X_train)
         loss = criterion(Y_pred, Y_train)
 
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         logger.log_iter(curr_epoch, curr_global_iter, loss.data,
                         get_lr(optimizer), model=model)
         curr_global_iter += 1
-        loader_iterable.set_postfix(
-            loss=loss.data.tolist(), lr=get_lr(optimizer))
+        loader_iterable.set_postfix(loss=loss.data.tolist())
 
     logger.log_epoch(curr_epoch, len(loader))
 
-    return curr_global_iter, curr_epoch < n_epochs
+    return curr_global_iter, not (curr_epoch + 1 < n_epochs)
 
 
 def validate(loader, model, criterion, lr_scheduler, logger, device,
              curr_epoch, curr_global_iter):
     model.eval()
+    val_feats, val_labels = [], []
 
     logger.logger.info("Validating...")
     loader_iterable = tqdm(loader)
     for (X_val, Y_val) in loader_iterable:
         X_val, Y_val = X_val.to(device), Y_val.to(device)
-        Y_pred = model(X_val)
+        Y_pred, X_feats = model(X_val)
         loss = criterion(Y_pred, Y_val)
+
+        val_feats.append(X_feats.data)
+        val_labels.append(Y_val.data)
 
         logger.log_iter(curr_epoch, curr_global_iter, loss.data, None, False)
         loader_iterable.set_postfix(loss=loss.data.tolist())
 
-    logger.log_epoch(curr_epoch, len(train_loader), False, model=model)
+    logger.log_epoch(curr_epoch, len(loader), False, model=model)
+
+    val_feats = torch.cat(val_feats, dim=0)
+    val_labels = torch.cat(val_labels, dim=0)
+    logger.draw_features(curr_global_iter, val_feats, val_labels)
 
     if lr_scheduler:
         lr_scheduler.step()
@@ -207,11 +226,15 @@ logger = lg.get_logger(opts)
 train_loader, val_loader = dt.get_loaders(opts)
 model = m.get_model(opts, logger)
 criterion = cr.get_criterion(opts)
-
-from criterion.lgm_criterion import LGMCriterion
-
-optimizer, lr_scheduler = get_optimizer(opts, model,
-        lgm_loss =criterion.lgm_loss if isinstance(criterion, LGMCriterion) else None)
+# optimizer, lr_scheduler = get_optimizer(opts, model)
+if opts.optimizer == 'sgd':
+    optimizer = optim.SGD(model.parameters(), lr=opts.lr,
+                            momentum=opts.momentum)
+elif opts.optimizer == 'adam':
+    optimizer = optim.Adam(model.parameters(), lr=opts.lr)
+else:
+    raise NotImplementedError()
+lr_scheduler = None
 
 terminate = False
 curr_epoch, curr_global_iter = 0, 0

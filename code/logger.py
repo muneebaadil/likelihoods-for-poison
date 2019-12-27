@@ -4,6 +4,7 @@ from tensorboardX import SummaryWriter
 import os
 import json
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 import pdb
 
@@ -60,8 +61,7 @@ class Logger(object):
             ))
         else:
             self.loss_test[epoch] /= float(n_batches)
-            self.writer.add_scalars('loss',
-                                    {'val': self.loss_test[epoch]},
+            self.writer.add_scalar('val_loss', self.loss_test[epoch],
                                     (epoch + 1) * n_batches)
 
             self.logger.info('Epoch [%3d/%3d]: Testing Loss %.3f' % (
@@ -76,8 +76,8 @@ class Logger(object):
 
             # write log to tensorboard and log.log in experiment folder
             if iter % self.opts.log_every == 0:
-                self.writer.add_scalars('loss', {'training': loss}, iter)
-                self.writer.add_scalar('learning_rate', lr, iter)
+                self.writer.add_scalar('train_loss', loss, iter)
+                # self.writer.add_scalar('learning_rate', lr, iter)
 
                 log_str = ('Epoch [%3d/%3d], Iter [%3d/%3d]: loss = %.3f,'
                            ' lr = %.3f' % (
@@ -98,6 +98,19 @@ class Logger(object):
                     )
         else:
             self.loss_test[epoch] += loss
+
+    def draw_features(self, curr_global_iter, features, labels, n_classes=10):
+        if features.shape[1] != 2:
+            raise NotImplementedError("Draw feautres only implemented with"
+                                      "2 features")
+        fig, ax = plt.subplots()
+        for K in range(n_classes):
+            ax.scatter(features[labels == K, 0], features[labels == K, 1],
+                       label='Class = {}'.format(K))
+
+        ax.legend()
+        self.writer.add_figure("feat_dist_{}".format(curr_global_iter), fig,
+                               global_step=curr_global_iter) 
 
     def set_logger(self):
 
