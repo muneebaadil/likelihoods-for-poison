@@ -128,7 +128,7 @@ def main():
     #criterion = [nllloss, lgm_loss]
 
     optimizer = optim.SGD([
-        {'params': model.parameters(), 'lr': 0.001, 'momentum': 0.9, 'weight_decay': 0.0005},
+        {'params': model.base.parameters(), 'lr': 0.001, 'momentum': 0.9, 'weight_decay': 0.0005},
         {'params': model.lgm.parameters(),'lr': 0.1}
     ], lr=0.001, momentum=0.9, weight_decay=0.0005)
 
@@ -148,4 +148,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()i
+    main()
