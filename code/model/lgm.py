@@ -79,7 +79,8 @@ class LGMLoss_v0(nn.Module):
         # calc of 1 + I(k = z_i)*alpha
         y_onehot = torch.FloatTensor(batch_size, self.num_classes)
         y_onehot.zero_()
-        y_onehot = Variable(y_onehot)#.cuda()
+        y_onehot = Variable(y_onehot).cuda()
+        #y_onehot = Variable(y_onehot)
         y_onehot.scatter_(1, torch.unsqueeze(label, dim=-1), self.alpha)
         y_onehot = y_onehot + 1.0
 
