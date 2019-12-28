@@ -7,7 +7,7 @@ from torchvision import datasets
 from torch.utils.data import DataLoader
 import torch.optim.lr_scheduler as lr_scheduler
 from model.net import Net
-from model.lgm import LGMLoss_v0, LGMLoss
+#from model.lgm import LGMLoss_v0, LGMLoss
 
 import matplotlib
 matplotlib.use('Agg')
@@ -56,25 +56,30 @@ def train(train_loader, model, criterion, optimizer, epoch, loss_weight, use_cud
         if use_cuda:
             data = data.cuda()
             target = target.cuda()
-        data, target = Variable(data), Variable(target)
+
+        # TODO: doesn't make sense to have these as Vars ???
+        #data, target = Variable(data), Variable(target)
 
         _, feats = model(data)
-        logits, mlogits, likelihood = criterion[1](feats, target)
-        loss = criterion[0](mlogits, target) + loss_weight * likelihood
+        logits, mlogits, likelihood = model.lgm(feats, target)
+        loss = criterion(mlogits, target) + loss_weight * likelihood
 
         _, predicted = torch.max(logits.data, 1)
         accuracy = (target.data == predicted).float().mean()
 
-        optimizer[0].zero_grad()
-        optimizer[1].zero_grad()
+        optimizer.zero_grad()
+        #optimizer[0].zero_grad()
+        #optimizer[1].zero_grad()
 
         loss.backward()
 
-        optimizer[0].step()
-        optimizer[1].step()
+        optimizer.step()
+        #optimizer[0].step()
+        #optimizer[1].step()
 
         ip1_loader.append(feats)
         idx_loader.append((target))
+
         if (i + 1) % 50 == 0:
             print('Epoch [%d], Iter [%d/%d] Loss: %.4f Acc %.4f'
                   % (epoch, i + 1, len(train_loader), loss.item(), accuracy))
@@ -108,22 +113,29 @@ def main():
     model = Net()
 
     # NLLLoss
-    nllloss = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss()
+    #nllloss = nn.CrossEntropyLoss()
     # CenterLoss
     loss_weight = 0.1
-    lgm_loss = LGMLoss_v0(10, 2, 1.0)
+    #lgm_loss = LGMLoss_v0(10, 2, 1.0)
 
     if use_cuda:
-        nllloss = nllloss.cuda()
-        lgm_loss = lgm_loss.cuda()
+        criterion = criterion.cuda()
+        #nllloss = nllloss.cuda()
+        #lgm_loss = lgm_loss.cuda()
         model = model.cuda()
 
-    criterion = [nllloss, lgm_loss]
+    #criterion = [nllloss, lgm_loss]
+
+    optimizer = optim.SGD([
+        {'params': model.parameters(), 'lr': 0.001, 'momentum': 0.9, 'weight_decay': 0.0005},
+        {'params': model.lgm.parameters(),'lr': 0.1}
+    ], lr=0.001, momentum=0.9, weight_decay=0.0005)
 
     # optimzer4nn
-    optimizer4nn = optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=0.0005)
+    #optimizer4nn = optim.SGD(model.parameters(), 5)
     # optimzer4center
-    optimzer4center = optim.SGD(lgm_loss.parameters(), lr=0.1)
+    #optimzer4center = optim.SGD(lgm_loss.parameters(), lr=0.1)
 
     #sheduler = lr_scheduler.StepLR(optimizer4nn, 20, gamma=0.8)
 
@@ -131,7 +143,7 @@ def main():
 
         #sheduler.step()
         # print optimizer4nn.param_groups[0]['lr']
-        train(train_loader, model, criterion, [optimizer4nn, optimzer4center], epoch + 1, loss_weight, use_cuda)
+        train(train_loader, model, criterion, optimizer, epoch + 1, loss_weight, use_cuda)
         test(test_loader, criterion, model, use_cuda)
 
 
