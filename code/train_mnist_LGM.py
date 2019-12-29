@@ -91,12 +91,12 @@ def main(opts):
     # Dataset
     trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))]))
+        transforms.Normalize((0.5,), (0.5,))]))
     train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
 
     testset = datasets.MNIST('../datasets/', download=True, train=False, transform=transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))]))
+        transforms.Normalize((0.5,), (0.5,))]))
     test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, num_workers=4)
 
     model = Net(use_lgm=True)
