@@ -13,7 +13,7 @@ from model.net import Net
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
+q
 def visualize(feat, labels, epoch):
 
     plt.ion()
@@ -78,13 +78,6 @@ def train(train_loader, model, criterion, optimizer, epoch, loss_weight, use_cud
             print('Epoch [%d], Iter [%d/%d] Loss: %.4f Acc %.4f'
                   % (epoch, i + 1, len(train_loader), loss.item(), accuracy))
 
-            if opts.save_ckpt:
-
-                save_name = "%s.epoch-%d-.model" % (epoch, opts.save_name)
-                torch.save(model.cpu().state_dict(), os.path.join(
-                               opts.ckpt_path, save_name))
-
-
     feat = torch.cat(ip1_loader, 0)
     labels = torch.cat(idx_loader, 0)
     visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch)
@@ -123,6 +116,10 @@ def main(opts):
 
         train(train_loader, model, criterion, optimizer, epoch + 1, loss_weight, use_cuda)
         test(test_loader, model, use_cuda)
+
+        if opts.save_ckpt:
+            save_name = "%s.epoch-%d-.model" % (opts.save_name, epoch)
+            torch.save(model.cpu().state_dict(), os.path.join(opts.ckpt_path, save_name))
 
 
 def get_opts():
