@@ -122,16 +122,16 @@ if __name__ == '__main__':
     feats = []
     for (X, _) in tqdm(loader):
         _, feat = model(X)
-        feats.append(feat)
-    poison_feat = model(poison)
-    feats.append(poison_feat)
+        feats.append(feat.data)
+    _, poison_feat = model(poison)
+    feats.append(poison_feat.data)
 
-    feats = torch.cat(feats, dim=0)
+    feats = torch.cat(feats, dim=0).data
     fig, ax = plt.subplots()
     for K in range(11):
-        ax.scatter(feats[Y == K, 0], feats_all[Y == K, 1],
+        ax.scatter(feats[Y == K, 0], feats[Y == K, 1],
                     label='Class = {}'.format(K))
 
     ax.legend()
     # plt.show()
-    plt.save_fig('poisoning_dist.png') 
+    plt.savefig('poisoning_dist.png') 
