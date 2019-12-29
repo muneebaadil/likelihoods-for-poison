@@ -1,5 +1,4 @@
 import torch.nn as nn
-import torch.nn.functional as F
 from .lgm import LGMLoss_v0, LGMLoss
 
 
@@ -32,14 +31,20 @@ class Net(nn.Module):
         ]
 
         if self.use_lgm:
-            #pass
             self.lgm = LGMLoss_v0(num_classes, feat_dim, alpha)
         else:
-            modules.append(nn.Linear(2, 10))
+            self.classifier = nn.Linear(2, 10)
 
         self.base = nn.Sequential(*modules)
 
     def forward(self, x):
 
+        # 2d features
         ip1 = self.base(x)
-        return ip1
+
+        if not self.use_lgm:
+            # 10-d clf output
+            ip2 = self.classifier(ip1)
+            return ip2, ip1
+        else:
+            return ip1

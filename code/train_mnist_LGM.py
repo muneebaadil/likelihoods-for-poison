@@ -13,7 +13,7 @@ from model.net import Net
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-q
+
 def visualize(feat, labels, epoch):
 
     plt.ion()
