@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import os
 
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     with torch.no_grad():
@@ -67,71 +68,198 @@ def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
     return poison, loss
 
 
-# testing script
+def get_opts():
+    import argparse
+    from time import gmtime, strftime
+    import os, subprocess, sys
+
+    p = argparse.ArgumentParser("Poisoning script for experimentations")
+    
+    p.add_argument('--debug', action='store_true')
+    # data
+    p.add_argument('--dataset', action='store', type=str, default='mnist',
+                        help='dataset name')
+    p.add_argument('--data_path', action='store', type=str,
+                        default='../datasets/', help='root path to dataset')
+    p.add_argument('--transforms', action='store', type=str, default=None)
+    p.add_argument('--n_workers', action='store', type=int, default=4,
+                        help='number of workers for data loading')
+    # network
+    # p.add_argument('--model', action='store', type=str, default='lenet5',
+    #                     help='model name')
+    # p.add_argument('--print_model', action='store_true',
+    #                     help='show model heirarchy on console')
+    # p.add_argument('--n_feats', action='store', type=int, default=2,
+    #                     help='number of features in the second last layer of the'
+    #                     'model')
+    # p.add_argument('--n_classes', action='store', type=int,
+    #                     default=10, help='number of classes in the dataset')
+    p.add_argument('--ckpt_path', action='store', type=str, default=None,
+                        help='path to weights file for resuming training process')
+    
+    # poisoning algorithm
+    p.add_argument('--num_poisons', type=int, default=1, help='number of poisons'
+                   'for each target.')
+    p.add_argument('--')
+
+    # logging
+    p.add_argument('--log_dir', action='store', type=str,
+                        default='../experiments/',
+                        help='root path to log experiments in')
+    p.add_argument('--exp_name', action='store', type=str,
+                        default=strftime("%Y-%m-%d_%H-%M-%S", gmtime()),
+                        help='name by which to save experiment')
+    # misc
+    p.add_argument('--seed', action='store', type=int, default=None,
+                        help='integer seed value for reproducibility')
+    
+    opts = p.parse_args()
+    opts.exp_name = 'debug' if opts.debug else opts.exp_name
+    opts.save_dir = os.path.join(opts.log_dir, opts.exp_name)
+
+    opts.git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
+    opts.command = ' '.join(sys.argv)
+
+    # set seed
+    if opts.seed is not None:
+        torch.manual_seed(opts.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    return opts
+
+def set_logger(save_dir):
+    import logging
+
+    class TqdmStream(object):
+        @classmethod
+        def write(_, msg):
+            pass
+
+    logging.basicConfig(stream=TqdmStream)
+    logger = logging.getLogger(name='trainer')
+    logger.setLevel(logging.DEBUG)
+
+    # create handlers
+    fh = logging.FileHandler(os.path.join(save_dir, 'log.log'))
+    fh.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+
+    # create formatter and add it to the handlers
+    formatter = logging.Formatter(
+        '[%(asctime)s; %(levelname)s]: %(message)s'
+    )
+    ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
+
+    # add the handlers to logger
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+    return logger
+
+def get_base_idx(target_label, Y_test):
+    """
+    Returns an index of randomly selected image and its label as a base image
+    """
+    idx = torch.randint(high=torch.sum(Y_test != target_label))
+    return idx    
+
 if __name__ == '__main__':
     import model.net as net
     from torchvision import transforms, datasets
     from torch.utils.data import DataLoader
-    from tqdm import tqdm
 
+    from tqdm import tqdm
+    import pdb
+
+    opts = get_opts()
+    logger = set_logger(opts.save_dir)
     model = net.Net()
-    model.load_state_dict(torch.load('../experiments/2019-12-27_14-41-06/models/epoch-best.model',
-                          map_location='cpu'))
+    model.load_state_dict(torch.load(opts.cpkt_path))
     t = transforms.Compose((
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,)))
     )
-    data = datasets.MNIST(
-        root='../datasets/', train=False, download=False, transform=t
-    )
-    loader = DataLoader(data, batch_size=32, shuffle=False, num_workers=4,
-                        pin_memory=False)
-    
-    X, Y = [], []
-    print("Loading dataset into the memory")
+    if opts.dataset.lower() == 'mnist':
+        data = datasets.MNIST(
+            root='../datasets/', train=False, download=False, transform=t
+        )
+    elif opts.dataset.lower() == 'cifar10':
+        raise NotImplementedError()
+    else:
+        raise NotImplementedError()
+
+    loader = DataLoader(data, batch_size=opts.batch_size, shuffle=False,
+                        num_workers=opts.n_workers, pin_memory=False)
+    X_test, Y_test = [], []
+    print("Loading TEST dataset into the memory")
     for (X_, Y_) in tqdm(loader):
-        X.append(X_)
-        Y.append(Y_)
-    X, Y = torch.cat(X, dim=0), torch.cat(Y, dim=0)
-    target_img = X[Y == 4][0] # selecting the first image with label 4.
-    base_img = X[Y == 1][0] # selecting the first iamge with label 1.
+        X_test.append(X_)
+        Y_test.append(Y_)
+    X_test, Y_test = torch.cat(X_test, dim=0), torch.cat(Y_test, dim=0)
 
-    del X
-    poison_label = torch.tensor([10], dtype=torch.long)
-    Y = torch.cat((Y, poison_label), 0)
+    for xtest, ytest in tqdm(zip(X_test, Y_test)):
+        # select current image in test set
+        target_img = xtest
+        target_img.unsqueeze_(0)
+        target_label = ytest
 
-    print("Crafting poison...")
-    poison, loss = do_poisoning(target_img.unsqueeze(0), 
-                 base_img.unsqueeze(0), model)
+        for _ in range(opts.n_poisons):
+            # select random base from different class than target
+            base_idx = get_base_idx(target_label, Y_test)
+            base_img, base_label = X_test[base_idx], Y_test[base_idx]
+            base_img.unsqueeze_(0)
+
+            print("Crafting poison")
+            poison = do_poisoning(target_img, base_img, model)
+
+        # finetune the network here. (is it really required?)
+
+    # X, Y = [], []
+    # print("Loading dataset into the memory")
+    # for (X_, Y_) in tqdm(loader):
+    #     X.append(X_)
+    #     Y.append(Y_)
+    # X, Y = torch.cat(X, dim=0), torch.cat(Y, dim=0)
+    # target_img = X[Y == 4][0] # selecting the first image with label 4.
+    # base_img = X[Y == 1][0] # selecting the first iamge with label 1.
+
+    # del X
+    # poison_label = torch.tensor([10], dtype=torch.long)
+    # Y = torch.cat((Y, poison_label), 0)
+
+    # print("Crafting poison...")
+    # poison, loss = do_poisoning(target_img.unsqueeze(0), 
+    #              base_img.unsqueeze(0), model)
     
     
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(ncols=3)
+    # import matplotlib.pyplot as plt
+    # fig, ax = plt.subplots(ncols=3)
 
-    poison_ = poison.squeeze(0).squeeze(0)
-    target_img_ = target_img.squeeze(0)
-    base_img_ = base_img.squeeze(0)
+    # poison_ = poison.squeeze(0).squeeze(0)
+    # target_img_ = target_img.squeeze(0)
+    # base_img_ = base_img.squeeze(0)
 
-    ax[0].imshow(poison_.detach().numpy(), cmap='gray')
-    ax[1].imshow(target_img_.numpy(), cmap='gray')
-    ax[2].imshow(base_img_.numpy(), cmap='gray')
-    # plt.show()
-    plt.savefig('poisoning.png')
+    # ax[0].imshow(poison_.detach().numpy(), cmap='gray')
+    # ax[1].imshow(target_img_.numpy(), cmap='gray')
+    # ax[2].imshow(base_img_.numpy(), cmap='gray')
+    # # plt.show()
+    # plt.savefig('poisoning.png')
 
-    print("Plotting Distribution")
-    feats = []
-    for (X, _) in tqdm(loader):
-        _, feat = model(X)
-        feats.append(feat.data)
-    _, poison_feat = model(poison)
-    feats.append(poison_feat.data)
+    # print("Plotting Distribution")
+    # feats = []
+    # for (X, _) in tqdm(loader):
+    #     _, feat = model(X)
+    #     feats.append(feat.data)
+    # _, poison_feat = model(poison)
+    # feats.append(poison_feat.data)
 
-    feats = torch.cat(feats, dim=0).data
-    fig, ax = plt.subplots()
-    for K in range(11):
-        ax.scatter(feats[Y == K, 0], feats[Y == K, 1],
-                    label='Class = {}'.format(K))
+    # feats = torch.cat(feats, dim=0).data
+    # fig, ax = plt.subplots()
+    # for K in range(11):
+    #     ax.scatter(feats[Y == K, 0], feats[Y == K, 1],
+    #                 label='Class = {}'.format(K))
 
-    ax.legend()
-    # plt.show()
-    plt.savefig('poisoning_dist.png') 
+    # ax.legend()
+    # # plt.show()
+    # plt.savefig('poisoning_dist.png') 
