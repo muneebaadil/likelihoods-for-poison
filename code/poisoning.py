@@ -31,6 +31,8 @@ def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
 
     poison = base_img.clone()
     loss = compute_loss(model, poison, base_img, target_img, beta_zero)
+
+    print("Initial loss = {}".format(loss))
     
     for _ in tqdm(range(max_iters)):
         # calculate gradient of Lp w.r.t. x
@@ -41,41 +43,40 @@ def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
         norm_val.backward()
         grad_Lp = poison.grad.data
 
-        # forward step
-        poison_hat = poison - lr * grad_Lp
-        # backward step
-        new_poison = (poison_hat + lr * beta_zero * base_img) / (1 + beta_zero * lr)
-        new_poison = torch.clamp(new_poison, min_val, max_val)
+        with torch.no_grad():
+            # forward step
+            poison_hat = poison - lr * grad_Lp
+            # backward step
+            new_poison = (poison_hat + lr * beta_zero * base_img) / (1 + beta_zero * lr)
+            new_poison = torch.clamp(new_poison, min_val, max_val)
 
-        new_loss = compute_loss(model, new_poison, base_img, target_img, beta_zero)
+            new_loss = compute_loss(model, new_poison, base_img, target_img, beta_zero)
         
-        if new_loss < loss_thres: # loss low enough and don't need to optimize further
-            # update stuff as final and break out of this optimization.
-            poison = new_poison
-            loss = new_loss
-            print("Optimization done: Loss = {}".format(loss))
-            break
-        
-        if new_loss > loss: # loss is too big than before; don't update stuff.
-            lr *= decay_coeff
-        else: # loss is lower than before and life is good; update stuff.
-            poison, loss = new_poison, new_loss
+            if new_loss < loss_thres: # loss low enough and don't need to optimize further
+                # update stuff as final and break out of this optimization.
+                poison = new_poison
+                loss = new_loss
+                print("Optimization done: Loss = {}".format(loss))
+                break
+            
+            if new_loss > loss: # loss is too big than before; don't update stuff.
+                lr *= decay_coeff
+            else: # loss is lower than before and life is good; update stuff.
+                poison, loss = new_poison, new_loss
+    print("Final loss = {}".format(loss))
     return poison, loss
 
 
 # testing script
 if __name__ == '__main__':
-    import model.net2 as net
+    import model.net as net
     from torchvision import transforms, datasets
     from torch.utils.data import DataLoader
     from tqdm import tqdm
 
     model = net.Net()
-    model.load_state_dict(torch.load('../testdrivelgm.epoch-39-.model',
+    model.load_state_dict(torch.load('../experiments/2019-12-27_14-41-06/models/epoch-best.model',
                           map_location='cpu'))
-    # TODO: LOAD THE MODEL WEIGHTS HERE.
-    # model.load_state_dict(state_dict=torch.load("../experiments/"))
-
     t = transforms.Compose((
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,)))
@@ -83,7 +84,7 @@ if __name__ == '__main__':
     data = datasets.MNIST(
         root='../datasets/', train=False, download=False, transform=t
     )
-    loader = DataLoader(data, batch_size=128, shuffle=False, num_workers=4,
+    loader = DataLoader(data, batch_size=32, shuffle=False, num_workers=4,
                         pin_memory=False)
     
     X, Y = [], []
@@ -91,19 +92,46 @@ if __name__ == '__main__':
     for (X_, Y_) in tqdm(loader):
         X.append(X_)
         Y.append(Y_)
-    
     X, Y = torch.cat(X, dim=0), torch.cat(Y, dim=0)
     target_img = X[Y == 4][0] # selecting the first image with label 4.
     base_img = X[Y == 1][0] # selecting the first iamge with label 1.
 
-    
-    print("Creating poison...")
+    del X
+    poison_label = torch.tensor([10], dtype=torch.long)
+    Y = torch.cat((Y, poison_label), 0)
+
+    print("Crafting poison...")
     poison, loss = do_poisoning(target_img.unsqueeze(0), 
                  base_img.unsqueeze(0), model)
     
     
     import matplotlib.pyplot as plt
-    # import pdb
-    # pdb.set_trace()
-    poison_ = poison.squeeze(0).permute(1,2,0)
-    plt.imshow(poison.detach().numpy(), cmap='gray')
+    fig, ax = plt.subplots(ncols=3)
+
+    poison_ = poison.squeeze(0).squeeze(0)
+    target_img_ = target_img.squeeze(0)
+    base_img_ = base_img.squeeze(0)
+
+    ax[0].imshow(poison_.detach().numpy(), cmap='gray')
+    ax[1].imshow(target_img_.numpy(), cmap='gray')
+    ax[2].imshow(base_img_.numpy(), cmap='gray')
+    # plt.show()
+    plt.savefig('poisoning.png')
+
+    print("Plotting Distribution")
+    feats = []
+    for (X, _) in tqdm(loader):
+        _, feat = model(X)
+        feats.append(feat)
+    poison_feat = model(poison)
+    feats.append(poison_feat)
+
+    feats = torch.cat(feats, dim=0)
+    fig, ax = plt.subplots()
+    for K in range(11):
+        ax.scatter(feats[Y == K, 0], feats_all[Y == K, 1],
+                    label='Class = {}'.format(K))
+
+    ax.legend()
+    # plt.show()
+    plt.save_fig('poisoning_dist.png') 
