@@ -92,3 +92,45 @@ class LGMLoss_v0(nn.Module):
         cdiff = feat - torch.index_select(self.centers, dim=0, index=label.long())
         likelihood = (1.0 / batch_size) * cdiff.pow(2).sum(1).sum(0) / 2.0
         return logits, margin_logits, likelihood
+
+class LGMUtils:
+
+    @staticmethod
+    def is_anomalous(model, claimed_class, X):
+        # we check if the input X which is claiming to be in `claimed_class` is an anomaly
+        # in the feature space or not (under Gaussian feature distribution)
+        # The assumption is that LGM should return lower likelihood of X  belonging to `claimed_class`
+        # if X is poisoned.
+
+        feats = model(X)
+        logits, _, _ = model.lgm(feat=feats, label=claimed_class)
+        _, predicted = torch.max(logits.data, 1)
+        return predicted != claimed_class
+
+
+if __name__ == "__main__":
+
+    # load model and test
+    from torch.utils.data import DataLoader
+    from torchvision import datasets, transforms
+    import torch
+
+    trainset = datasets.MNIST('../../datasets/', download=True, train=True, transform=transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))]))
+
+    train_loader = DataLoader(trainset, batch_size=1, shuffle=False, num_workers=4)
+
+    X, Y = next(iter(train_loader))
+    X = X.cuda()
+    Y = Y.cuda()
+
+    # load a model
+    from net import Net
+    model = Net(use_lgm=True).cuda()
+    model.load_state_dict(torch.load('../../checkpoints/LGM/LGM.epoch-29-.model'),
+                          strict=False)
+
+    #print(X.size(), Y.size())
+    # pdb.set_trace()
+    #print(LGMUtils.is_anomalous(model, Y, X))

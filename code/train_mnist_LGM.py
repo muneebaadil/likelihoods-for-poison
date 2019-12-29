@@ -109,7 +109,7 @@ def main(opts):
 
     optimizer = optim.SGD([
         {'params': model.base.parameters(), 'lr': opts.lr, 'momentum': 0.9, 'weight_decay': 0.0005},
-        {'params': model.lgm.parameters(),'lr': 0.01}
+        {'params': model.lgm.parameters(),'lr': 0.001}
     ], lr=0.001, momentum=0.9, weight_decay=0.0005)
 
     for epoch in range(opts.n_epochs):
@@ -119,7 +119,7 @@ def main(opts):
 
         if opts.save_ckpt:
             save_name = "%s.epoch-%d-.model" % (opts.save_name, epoch)
-            torch.save(model.cpu().state_dict(), os.path.join(opts.ckpt_path, save_name))
+            torch.save(model.state_dict(), os.path.join(opts.ckpt_path, save_name))
 
 
 def get_opts():
