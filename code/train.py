@@ -12,11 +12,7 @@ import pdb
 def get_opts():
     import argparse
     from time import gmtime, strftime
-    import torch
-    import os
-    import subprocess
-    import yaml
-    import sys
+    import torch, os, subprocess, yaml, sys
 
     parser = argparse.ArgumentParser(description='Training Script')
 
