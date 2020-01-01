@@ -12,11 +12,11 @@ def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
         out = a + beta_zero * b
     return out
 
-def do_poisoning(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
+def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
                  loss_thres=2.9, lr=500.*255, decay_coeff=.5, min_val=-1.,
                  max_val=1.):
     """
-    Does poisoning according to Poison Frogs paper.
+    Generates poison according to Poison Frogs paper.
     https://arxiv.org/abs/1804.00792
 
     Args:
@@ -142,7 +142,7 @@ def get_opts():
 
     os.makedirs(opts.save_dir)
     os.makedirs(os.path.join(opts.save_dir, 'poisons'))
-    opts.folder_names = ['poison-{}'.format(x) for x in range(10)]
+    opts.folder_names = ['target-{}'.format(x) for x in range(10)]
     for folder_name in opts.folder_names:
         os.makedirs(os.path.join(opts.save_dir, 'poisons', folder_name))
 
@@ -240,7 +240,7 @@ if __name__ == '__main__':
             base_img.unsqueeze_(0)
 
             logger.info("Crafting poison")
-            poison, _ = do_poisoning(target_img, base_img, model,
+            poison, _ = generate_poison(target_img, base_img, model,
                                      logger)
             poison = poison.squeeze(0)
 
@@ -249,7 +249,7 @@ if __name__ == '__main__':
             filepath = os.path.join(opts.save_dir, 'poisons',
                                     opts.folder_names[target_label],
                                     filename)
-            save_image(poison, filepath)
+            save_image(poison, filepath, normalize=True, range=(-1, 1))
             logger.info("Saved image to {}".format(filepath))
 
         # finetune the network here. (is it really required?)
