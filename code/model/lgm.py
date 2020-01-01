@@ -133,22 +133,24 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
     from torchvision import datasets, transforms
     import torch
-    
-    bsize = 4
-    trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))]))
+    from data.poisons import Poison
 
+    bsize = 4
+    tfsm = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+
+    trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=tfsm)
     train_loader = DataLoader(trainset, batch_size=bsize, shuffle=False, num_workers=4)
-    # pdb.set_trace()
-    X, Y = next(iter(train_loader))
-    X = X.cuda()
-    Y = Y.cuda()
+    poisoned_dataset = Poison('../../experiments/debug/poisons', tfsm)
+    poisoned_loader = DataLoader(poisoned_dataset, batch_size=bsize, shuffle=False, num_workers=4)
 
     # load a model
     from .net import Net
     import pdb
     import matplotlib.pyplot as plt
+    import numpy as np
 
     model = Net(use_lgm=True).cuda()
     model.load_state_dict(torch.load('../checkpoints/LGM/LGM.epoch-29-.model'),
@@ -156,17 +158,33 @@ if __name__ == "__main__":
 
     lkd_hist = []
 
-    for (i, data) in enumerate(train_loader):
+    for i, (X, Y) in enumerate(train_loader):
 
+        X = X.cuda()
+        Y = Y.cuda()
         lkd = LGMUtils.get_likelihood(model, Y, X)
         lkd_hist.extend(lkd.cpu().numpy())
+
         if i*bsize >= 100: break
 
-    lkd_hist = lkd_hist[:100]
+    plkd_hist = []
+    plt.ion()
+    plt.clf()
+    n, b, p = plt.hist(plkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='green', alpha=0.7)
+    plt.savefig("./hist_normal.jpg")
+
+    lkd_hist = []
+
+    for i, (X, Y) in enumerate(poisoned_loader):
+        X = X.cuda()
+        Y = Y.cuda()
+        lkd = LGMUtils.get_likelihood(model, Y, X)
+        plkd_hist.extend(lkd.cpu().numpy())
+
 
     plt.ion()
     plt.clf()
-    n, b, p = plt.hist(lkd_hist, bins=20, align='mid', facecolor='blue', alpha=0.8)
-    plt.savefig("./hist_normal.jpg")
+    n, b, p = plt.hist(plkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='orange', alpha=0.7)
+    plt.savefig("./hist_poisoned.jpg")
 
     print("done")
