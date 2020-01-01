@@ -256,7 +256,7 @@ if __name__ == '__main__':
             logger.info("Saved image to {}".format(filepath))
 
         # finetune the network here. (is it really required?)
-        if (opts.max_targets > 0) and (opts.max_targets >= sample_num):
+        if (opts.max_targets > 0) and (opts.max_targets <= sample_num):
             logger.info("Max target limit reached; stopped processing.")
             break
 
