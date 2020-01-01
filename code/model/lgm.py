@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=tfsm)
     train_loader = DataLoader(trainset, batch_size=bsize, shuffle=False, num_workers=4)
-    poisoned_dataset = Poison('../../experiments/debug/poisons', tfsm)
+    poisoned_dataset = Poison('../experiments/debug/poisons', tfsm)
     poisoned_loader = DataLoader(poisoned_dataset, batch_size=bsize, shuffle=False, num_workers=4)
 
     # load a model
@@ -157,34 +157,30 @@ if __name__ == "__main__":
                           strict=False)
 
     lkd_hist = []
-
-    for i, (X, Y) in enumerate(train_loader):
-
+    for X, Y in train_loader:
         X = X.cuda()
         Y = Y.cuda()
         lkd = LGMUtils.get_likelihood(model, Y, X)
         lkd_hist.extend(lkd.cpu().numpy())
-
         if i*bsize >= 100: break
 
-    plkd_hist = []
     plt.ion()
     plt.clf()
-    n, b, p = plt.hist(plkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='green', alpha=0.7)
+    n, b, p = plt.hist(lkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='green', alpha=0.7)
+    plt.gca().set_title("Lkd on normal")
     plt.savefig("./hist_normal.jpg")
 
-    lkd_hist = []
-
-    for i, (X, Y) in enumerate(poisoned_loader):
+    plkd_hist = []
+    for X, Y, _ in poisoned_loader:
         X = X.cuda()
         Y = Y.cuda()
         lkd = LGMUtils.get_likelihood(model, Y, X)
         plkd_hist.extend(lkd.cpu().numpy())
 
-
     plt.ion()
     plt.clf()
     n, b, p = plt.hist(plkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='orange', alpha=0.7)
+    plt.gca().set_title("Lkd on poisoned")
     plt.savefig("./hist_poisoned.jpg")
 
     print("done")
