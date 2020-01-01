@@ -107,6 +107,24 @@ class LGMUtils:
         _, predicted = torch.max(logits.data, 1)
         return predicted != claimed_class
 
+    @staticmethod
+    def get_likelihood(model, claimed_class, X):
+
+        # we check if the input X which is claiming to be in `claimed_class` is an anomaly
+        # in the feature space or not (under Gaussian feature distribution)
+        # The assumption is that LGM should return lower likelihood of X  belonging to `claimed_class`
+        # if X is poisoned.
+
+        # computer 2D features under learned likelihood
+        feats = model(X)
+        # feature mean of class X is claiming to belong to
+        fmean = model.lgm.centers[claimed_class]
+        # likelihood (as explained in 1st para of Adversarial Verification section in 4.3)
+        # feat and fmean should be size [1,2] tensors
+        lkd = torch.exp(-0.5*(feats - fmean).norm()**2)
+
+        return lkd
+
 
 if __name__ == "__main__":
     # load model and test
