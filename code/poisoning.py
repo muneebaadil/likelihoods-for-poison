@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import os
+import pdb
+from torchvision.utils import save_image
 
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     with torch.no_grad():
@@ -10,11 +12,11 @@ def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
         out = a + beta_zero * b
     return out
 
-def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
+def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
                  loss_thres=2.9, lr=500.*255, decay_coeff=.5, min_val=-1.,
                  max_val=1.):
     """
-    Does poisoning according to Poison Frogs paper.
+    Generates poison according to Poison Frogs paper.
     https://arxiv.org/abs/1804.00792
 
     Args:
@@ -33,7 +35,7 @@ def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
     poison = base_img.clone()
     loss = compute_loss(model, poison, base_img, target_img, beta_zero)
 
-    print("Initial loss = {}".format(loss))
+    logger.info("Initial loss = {}".format(loss))
     
     for _ in tqdm(range(max_iters)):
         # calculate gradient of Lp w.r.t. x
@@ -57,14 +59,14 @@ def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
                 # update stuff as final and break out of this optimization.
                 poison = new_poison
                 loss = new_loss
-                print("Optimization done: Loss = {}".format(loss))
+                logger.info("Optimization done: Loss = {}".format(loss))
                 break
             
             if new_loss > loss: # loss is too big than before; don't update stuff.
                 lr *= decay_coeff
             else: # loss is lower than before and life is good; update stuff.
                 poison, loss = new_poison, new_loss
-    print("Final loss = {}".format(loss))
+    logger.info("Final Loss = {}".format(loss))
     return poison, loss
 
 
@@ -98,9 +100,10 @@ def get_opts():
                         help='path to weights file for resuming training process')
     
     # poisoning algorithm
-    p.add_argument('--num_poisons', type=int, default=1, help='number of poisons'
-                   'for each target.')
-    p.add_argument('--')
+    p.add_argument('--max_targets', type=int, default=-1, help='number of max'
+                   ' target images to craft a poison for.')
+    p.add_argument('--n_poisons', type=int, default=1, help='number of poisons'
+                   'for each target image')
 
     # logging
     p.add_argument('--log_dir', action='store', type=str,
@@ -125,6 +128,26 @@ def get_opts():
         torch.manual_seed(opts.seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+    # cpu/gpu settings config
+    if torch.cuda.is_available():
+        opts.use_cuda = True
+        opts.device = torch.device("cuda")
+    else:
+        opts.use_cuda = False
+        opts.device = torch.device("cpu")
+
+    # making experiment (sub)directories.
+    if os.path.exists(opts.save_dir):
+        os.system('rm -rf {}'.format(opts.save_dir))
+        print("Removing existing experiment directory by the same name.")
+
+    os.makedirs(opts.save_dir)
+    os.makedirs(os.path.join(opts.save_dir, 'poisons'))
+    opts.folder_names = ['target-{}'.format(x) for x in range(10)]
+    for folder_name in opts.folder_names:
+        os.makedirs(os.path.join(opts.save_dir, 'poisons', folder_name))
+
     return opts
 
 def set_logger(save_dir):
@@ -140,8 +163,8 @@ def set_logger(save_dir):
     logger.setLevel(logging.DEBUG)
 
     # create handlers
-    fh = logging.FileHandler(os.path.join(save_dir, 'log.log'))
-    fh.setLevel(logging.DEBUG)
+    # fh = logging.FileHandler(os.path.join(save_dir, 'log.log'))
+    # fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO)
 
@@ -150,19 +173,21 @@ def set_logger(save_dir):
         '[%(asctime)s; %(levelname)s]: %(message)s'
     )
     ch.setFormatter(formatter)
-    fh.setFormatter(formatter)
+    # fh.setFormatter(formatter)
 
     # add the handlers to logger
     logger.addHandler(ch)
-    logger.addHandler(fh)
+    # logger.addHandler(fh)
     return logger
 
 def get_base_idx(target_label, Y_test):
     """
     Returns an index of randomly selected image and its label as a base image
     """
-    idx = torch.randint(high=torch.sum(Y_test != target_label))
-    return idx    
+    # pdb.set_trace()
+    limit = torch.sum(Y_test != target_label).item()
+    idx = torch.randint(high=limit, size=(1,))
+    return idx.item()
 
 if __name__ == '__main__':
     import model.net as net
@@ -174,46 +199,66 @@ if __name__ == '__main__':
 
     opts = get_opts()
     logger = set_logger(opts.save_dir)
-    model = net.Net()
-    model.load_state_dict(torch.load(opts.cpkt_path))
+    logger.info('Experiment folder at %s' % opts.save_dir)
+
+    model = net.Net().to(opts.device)
+    model.load_state_dict(torch.load(opts.ckpt_path,
+                                     map_location=opts.device))
     t = transforms.Compose((
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,)))
     )
     if opts.dataset.lower() == 'mnist':
         data = datasets.MNIST(
-            root='../datasets/', train=False, download=False, transform=t
+            root='../datasets/', train=False, download=True, transform=t
         )
     elif opts.dataset.lower() == 'cifar10':
         raise NotImplementedError()
     else:
         raise NotImplementedError()
 
-    loader = DataLoader(data, batch_size=opts.batch_size, shuffle=False,
+    loader_temp = DataLoader(data, batch_size=64, shuffle=False,
                         num_workers=opts.n_workers, pin_memory=False)
     X_test, Y_test = [], []
-    print("Loading TEST dataset into the memory")
-    for (X_, Y_) in tqdm(loader):
+    logger.info("Loading TEST dataset into the memory")
+    for (X_, Y_) in tqdm(loader_temp):
         X_test.append(X_)
         Y_test.append(Y_)
     X_test, Y_test = torch.cat(X_test, dim=0), torch.cat(Y_test, dim=0)
+    X_test, Y_test = X_test.to(opts.device), Y_test.to(opts.device)
 
-    for xtest, ytest in tqdm(zip(X_test, Y_test)):
+    del loader_temp
+
+    for sample_num, (xtest, ytest) in tqdm(enumerate(zip(X_test, Y_test))):
         # select current image in test set
         target_img = xtest
         target_img.unsqueeze_(0)
         target_label = ytest
 
-        for _ in range(opts.n_poisons):
+        for poison_num in range(opts.n_poisons):
             # select random base from different class than target
             base_idx = get_base_idx(target_label, Y_test)
             base_img, base_label = X_test[base_idx], Y_test[base_idx]
             base_img.unsqueeze_(0)
 
-            print("Crafting poison")
-            poison = do_poisoning(target_img, base_img, model)
+            logger.info("Crafting poison")
+            poison, _ = generate_poison(target_img, base_img, model,
+                                     logger)
+            poison = poison.squeeze(0)
+
+            # save crafted poison
+            filename = '{}_{}_{}.png'.format(base_label, sample_num,
+                                             poison_num)
+            filepath = os.path.join(opts.save_dir, 'poisons',
+                                    opts.folder_names[target_label],
+                                    filename)
+            save_image(poison, filepath, normalize=True, range=(-1, 1))
+            logger.info("Saved image to {}".format(filepath))
 
         # finetune the network here. (is it really required?)
+        if (opts.max_targets > 0) and (opts.max_targets <= sample_num):
+            logger.info("Max target limit reached; stopped processing.")
+            break
 
     # X, Y = [], []
     # print("Loading dataset into the memory")
