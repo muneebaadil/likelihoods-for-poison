@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import os
+import pdb
 
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     with torch.no_grad():
@@ -98,9 +99,8 @@ def get_opts():
                         help='path to weights file for resuming training process')
     
     # poisoning algorithm
-    p.add_argument('--num_poisons', type=int, default=1, help='number of poisons'
-                   'for each target.')
-    p.add_argument('--')
+    p.add_argument('--n_poisons', type=int, default=1, help='number of poisons'
+                   'for each target image')
 
     # logging
     p.add_argument('--log_dir', action='store', type=str,
@@ -125,6 +125,15 @@ def get_opts():
         torch.manual_seed(opts.seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+    # cpu/gpu settings config
+    if torch.cuda.is_available():
+        opts.use_cuda = True
+        opts.device = torch.device("cuda")
+    else:
+        opts.use_cuda = False
+        opts.device = torch.device("cpu")
+
     return opts
 
 def set_logger(save_dir):
@@ -140,8 +149,8 @@ def set_logger(save_dir):
     logger.setLevel(logging.DEBUG)
 
     # create handlers
-    fh = logging.FileHandler(os.path.join(save_dir, 'log.log'))
-    fh.setLevel(logging.DEBUG)
+    # fh = logging.FileHandler(os.path.join(save_dir, 'log.log'))
+    # fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO)
 
@@ -150,19 +159,21 @@ def set_logger(save_dir):
         '[%(asctime)s; %(levelname)s]: %(message)s'
     )
     ch.setFormatter(formatter)
-    fh.setFormatter(formatter)
+    # fh.setFormatter(formatter)
 
     # add the handlers to logger
     logger.addHandler(ch)
-    logger.addHandler(fh)
+    # logger.addHandler(fh)
     return logger
 
 def get_base_idx(target_label, Y_test):
     """
     Returns an index of randomly selected image and its label as a base image
     """
-    idx = torch.randint(high=torch.sum(Y_test != target_label))
-    return idx    
+    # pdb.set_trace()
+    limit = torch.sum(Y_test != target_label).item()
+    idx = torch.randint(high=limit, size=(1,))
+    return idx.item()
 
 if __name__ == '__main__':
     import model.net as net
@@ -174,29 +185,35 @@ if __name__ == '__main__':
 
     opts = get_opts()
     logger = set_logger(opts.save_dir)
-    model = net.Net()
-    model.load_state_dict(torch.load(opts.cpkt_path))
+    logger.info('Experiment folder at %s' % opts.save_dir)
+
+    model = net.Net().to(opts.device)
+    model.load_state_dict(torch.load(opts.ckpt_path,
+                                     map_location=opts.device))
     t = transforms.Compose((
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,)))
     )
     if opts.dataset.lower() == 'mnist':
         data = datasets.MNIST(
-            root='../datasets/', train=False, download=False, transform=t
+            root='../datasets/', train=False, download=True, transform=t
         )
     elif opts.dataset.lower() == 'cifar10':
         raise NotImplementedError()
     else:
         raise NotImplementedError()
 
-    loader = DataLoader(data, batch_size=opts.batch_size, shuffle=False,
+    loader_temp = DataLoader(data, batch_size=64, shuffle=False,
                         num_workers=opts.n_workers, pin_memory=False)
     X_test, Y_test = [], []
-    print("Loading TEST dataset into the memory")
-    for (X_, Y_) in tqdm(loader):
+    logger.info("Loading TEST dataset into the memory")
+    for (X_, Y_) in tqdm(loader_temp):
         X_test.append(X_)
         Y_test.append(Y_)
     X_test, Y_test = torch.cat(X_test, dim=0), torch.cat(Y_test, dim=0)
+    X_test, Y_test = X_test.to(opts.device), Y_test.to(opts.device)
+
+    del loader_temp
 
     for xtest, ytest in tqdm(zip(X_test, Y_test)):
         # select current image in test set
@@ -213,7 +230,10 @@ if __name__ == '__main__':
             print("Crafting poison")
             poison = do_poisoning(target_img, base_img, model)
 
+            break
+
         # finetune the network here. (is it really required?)
+        break
 
     # X, Y = [], []
     # print("Loading dataset into the memory")
