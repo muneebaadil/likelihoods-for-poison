@@ -100,6 +100,8 @@ def get_opts():
                         help='path to weights file for resuming training process')
     
     # poisoning algorithm
+    p.add_argument('--max_targets', type=int, default=-1, help='number of max'
+                   ' target images to craft a poison for.')
     p.add_argument('--n_poisons', type=int, default=1, help='number of poisons'
                    'for each target image')
 
@@ -233,7 +235,7 @@ if __name__ == '__main__':
         target_img.unsqueeze_(0)
         target_label = ytest
 
-        for _ in range(opts.n_poisons):
+        for poison_num in range(opts.n_poisons):
             # select random base from different class than target
             base_idx = get_base_idx(target_label, Y_test)
             base_img, base_label = X_test[base_idx], Y_test[base_idx]
@@ -245,7 +247,8 @@ if __name__ == '__main__':
             poison = poison.squeeze(0)
 
             # save crafted poison
-            filename = '{}_{}.png'.format(base_label, sample_num)
+            filename = '{}_{}_{}.png'.format(base_label, sample_num,
+                                             poison_num)
             filepath = os.path.join(opts.save_dir, 'poisons',
                                     opts.folder_names[target_label],
                                     filename)
@@ -253,7 +256,9 @@ if __name__ == '__main__':
             logger.info("Saved image to {}".format(filepath))
 
         # finetune the network here. (is it really required?)
-        pass
+        if (opts.max_targets > 0) and (opts.max_targets >= sample_num):
+            logger.info("Max target limit reached; stopped processing.")
+            break
 
     # X, Y = [], []
     # print("Loading dataset into the memory")
