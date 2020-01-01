@@ -115,15 +115,17 @@ class LGMUtils:
         # The assumption is that LGM should return lower likelihood of X  belonging to `claimed_class`
         # if X is poisoned.
 
-        # computer 2D features under learned likelihood
-        feats = model(X)
-        # feature mean of class X is claiming to belong to
-        fmean = model.lgm.centers[claimed_class]
-        # likelihood (as explained in 1st para of Adversarial Verification section in 4.3)
-        # feat and fmean should be size [1,2] tensors
-        lkd = torch.exp(-0.5*(feats - fmean).norm()**2)
+        with torch.no_grad():
 
-        return lkd
+            # computer 2D features under learned likelihood
+            feats = model(X)
+            # feature mean of class X is claiming to belong to
+            fmean = model.lgm.centers[claimed_class]
+            # likelihood (as explained in 1st para of Adversarial Verification section in 4.3)
+            # feat and fmean should be size [1,2] tensors
+            lkd = torch.exp(-0.5*(feats - fmean).norm(p=2, dim=1)**2)
+
+            return lkd
 
 
 if __name__ == "__main__":
@@ -131,28 +133,40 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
     from torchvision import datasets, transforms
     import torch
-
-    trainset = datasets.MNIST('../../datasets/', download=True, train=True, transform=transforms.Compose([
+    
+    bsize = 4
+    trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))]))
 
-    train_loader = DataLoader(trainset, batch_size=1, shuffle=False, num_workers=4)
+    train_loader = DataLoader(trainset, batch_size=bsize, shuffle=False, num_workers=4)
     # pdb.set_trace()
     X, Y = next(iter(train_loader))
     X = X.cuda()
     Y = Y.cuda()
-    #t = torch.LongTensor(10)
-    #t.zero_()
-    #t[Y.item()] = 1
-    #t = Variable(t).cuda()
-    #print(Y, t)
 
     # load a model
-    from net import Net
+    from .net import Net
+    import pdb
+    import matplotlib.pyplot as plt
 
     model = Net(use_lgm=True).cuda()
-    model.load_state_dict(torch.load('../../checkpoints/LGM/LGM.epoch-29-.model'),
+    model.load_state_dict(torch.load('../checkpoints/LGM/LGM.epoch-29-.model'),
                           strict=False)
-    print(X.size(), Y.size())
-    # pdb.set_trace()
-    print(LGMUtils.is_anomalous(model, Y, X))
+
+    lkd_hist = []
+
+    for (i, data) in enumerate(train_loader):
+
+        lkd = LGMUtils.get_likelihood(model, Y, X)
+        lkd_hist.extend(lkd.cpu().numpy())
+        if i*bsize >= 100: break
+
+    lkd_hist = lkd_hist[:100]
+
+    plt.ion()
+    plt.clf()
+    n, b, p = plt.hist(lkd_hist, bins=20, align='mid', facecolor='blue', alpha=0.8)
+    plt.savefig("./hist_normal.jpg")
+
+    print("done")
