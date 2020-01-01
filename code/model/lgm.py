@@ -109,7 +109,6 @@ class LGMUtils:
 
 
 if __name__ == "__main__":
-
     # load model and test
     from torch.utils.data import DataLoader
     from torchvision import datasets, transforms
@@ -120,17 +119,22 @@ if __name__ == "__main__":
         transforms.Normalize((0.5,), (0.5,))]))
 
     train_loader = DataLoader(trainset, batch_size=1, shuffle=False, num_workers=4)
-
+    # pdb.set_trace()
     X, Y = next(iter(train_loader))
     X = X.cuda()
     Y = Y.cuda()
+    #t = torch.LongTensor(10)
+    #t.zero_()
+    #t[Y.item()] = 1
+    #t = Variable(t).cuda()
+    #print(Y, t)
 
     # load a model
     from net import Net
+
     model = Net(use_lgm=True).cuda()
     model.load_state_dict(torch.load('../../checkpoints/LGM/LGM.epoch-29-.model'),
                           strict=False)
-
-    #print(X.size(), Y.size())
+    print(X.size(), Y.size())
     # pdb.set_trace()
-    #print(LGMUtils.is_anomalous(model, Y, X))
+    print(LGMUtils.is_anomalous(model, Y, X))
