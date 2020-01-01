@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import os
 import pdb
+from torchvision.utils import save_image
 
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     with torch.no_grad():
@@ -11,7 +12,7 @@ def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
         out = a + beta_zero * b
     return out
 
-def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
+def do_poisoning(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
                  loss_thres=2.9, lr=500.*255, decay_coeff=.5, min_val=-1.,
                  max_val=1.):
     """
@@ -34,7 +35,7 @@ def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
     poison = base_img.clone()
     loss = compute_loss(model, poison, base_img, target_img, beta_zero)
 
-    print("Initial loss = {}".format(loss))
+    logger.info("Initial loss = {}".format(loss))
     
     for _ in tqdm(range(max_iters)):
         # calculate gradient of Lp w.r.t. x
@@ -58,14 +59,14 @@ def do_poisoning(target_img, base_img, model, beta=0.25, max_iters=1000,
                 # update stuff as final and break out of this optimization.
                 poison = new_poison
                 loss = new_loss
-                print("Optimization done: Loss = {}".format(loss))
+                logger.info("Optimization done: Loss = {}".format(loss))
                 break
             
             if new_loss > loss: # loss is too big than before; don't update stuff.
                 lr *= decay_coeff
             else: # loss is lower than before and life is good; update stuff.
                 poison, loss = new_poison, new_loss
-    print("Final loss = {}".format(loss))
+    logger.info("Final Loss = {}".format(loss))
     return poison, loss
 
 
@@ -133,6 +134,17 @@ def get_opts():
     else:
         opts.use_cuda = False
         opts.device = torch.device("cpu")
+
+    # making experiment (sub)directories.
+    if os.path.exists(opts.save_dir):
+        os.system('rm -rf {}'.format(opts.save_dir))
+        print("Removing existing experiment directory by the same name.")
+
+    os.makedirs(opts.save_dir)
+    os.makedirs(os.path.join(opts.save_dir, 'poisons'))
+    opts.folder_names = ['poison-{}'.format(x) for x in range(10)]
+    for folder_name in opts.folder_names:
+        os.makedirs(os.path.join(opts.save_dir, 'poisons', folder_name))
 
     return opts
 
@@ -215,7 +227,7 @@ if __name__ == '__main__':
 
     del loader_temp
 
-    for xtest, ytest in tqdm(zip(X_test, Y_test)):
+    for sample_num, (xtest, ytest) in tqdm(enumerate(zip(X_test, Y_test))):
         # select current image in test set
         target_img = xtest
         target_img.unsqueeze_(0)
@@ -227,13 +239,21 @@ if __name__ == '__main__':
             base_img, base_label = X_test[base_idx], Y_test[base_idx]
             base_img.unsqueeze_(0)
 
-            print("Crafting poison")
-            poison = do_poisoning(target_img, base_img, model)
+            logger.info("Crafting poison")
+            poison, _ = do_poisoning(target_img, base_img, model,
+                                     logger)
+            poison = poison.squeeze(0)
 
-            break
+            # save crafted poison
+            filename = '{}_{}.png'.format(base_label, sample_num)
+            filepath = os.path.join(opts.save_dir, 'poisons',
+                                    opts.folder_names[target_label],
+                                    filename)
+            save_image(poison, filepath)
+            logger.info("Saved image to {}".format(filepath))
 
         # finetune the network here. (is it really required?)
-        break
+        pass
 
     # X, Y = [], []
     # print("Loading dataset into the memory")
