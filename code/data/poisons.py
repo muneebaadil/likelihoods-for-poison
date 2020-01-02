@@ -25,7 +25,7 @@ class Poison(Dataset):
         if self.return_targets:
             return img, base_label, target_label
         else:
-            return img, base_label, target_label
+            return img, base_label
 
 if __name__ == '__main__':
     # test script.

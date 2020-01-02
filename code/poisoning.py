@@ -3,72 +3,7 @@ import numpy as np
 import os
 import pdb
 from torchvision.utils import save_image
-
-def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
-    with torch.no_grad():
-        a = torch.norm(model(curr_poison)[0] - \
-            model(target_img)[0])
-        b = torch.norm(curr_poison - base_img)
-        out = a + beta_zero * b
-    return out
-
-def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
-                 loss_thres=2.9, lr=500.*255, decay_coeff=.5, min_val=-1.,
-                 max_val=1.):
-    """
-    Generates poison according to Poison Frogs paper.
-    https://arxiv.org/abs/1804.00792
-
-    Args:
-        target_img: PyTorch tensor of shape (1, 3, H, W)
-        base_img: PyTorch tensor of shape (1, 3, H, W)
-        model: PyTorch nn.Module of a network
-        beta (float), max_iters (int), lr (float): hyper-params of the method.
-
-    Returns:
-        poison: PyTorch tensor of shape (1, 3, H, W) containing the poisoned image.
-        loss: Loss value of the poisoned image 
-    """
-    beta_zero = beta * (2048.0 / base_img.numel()) ** 2
-    Lp_func = lambda x: torch.norm(model(x)[1] - model(target_img)[1])
-
-    poison = base_img.clone()
-    loss = compute_loss(model, poison, base_img, target_img, beta_zero)
-
-    logger.info("Initial loss = {}".format(loss))
-    
-    for _ in tqdm(range(max_iters)):
-        # calculate gradient of Lp w.r.t. x
-        poison.requires_grad = True
-        norm_val = Lp_func(poison)
-
-        model.zero_grad()
-        norm_val.backward()
-        grad_Lp = poison.grad.data
-
-        with torch.no_grad():
-            # forward step
-            poison_hat = poison - lr * grad_Lp
-            # backward step
-            new_poison = (poison_hat + lr * beta_zero * base_img) / (1 + beta_zero * lr)
-            new_poison = torch.clamp(new_poison, min_val, max_val)
-
-            new_loss = compute_loss(model, new_poison, base_img, target_img, beta_zero)
-        
-            if new_loss < loss_thres: # loss low enough and don't need to optimize further
-                # update stuff as final and break out of this optimization.
-                poison = new_poison
-                loss = new_loss
-                logger.info("Optimization done: Loss = {}".format(loss))
-                break
-            
-            if new_loss > loss: # loss is too big than before; don't update stuff.
-                lr *= decay_coeff
-            else: # loss is lower than before and life is good; update stuff.
-                poison, loss = new_poison, new_loss
-    logger.info("Final Loss = {}".format(loss))
-    return poison, loss
-
+from tqdm import trange, tqdm
 
 def get_opts():
     import argparse
@@ -86,25 +21,16 @@ def get_opts():
     p.add_argument('--transforms', action='store', type=str, default=None)
     p.add_argument('--n_workers', action='store', type=int, default=4,
                         help='number of workers for data loading')
-    # network
-    # p.add_argument('--model', action='store', type=str, default='lenet5',
-    #                     help='model name')
-    # p.add_argument('--print_model', action='store_true',
-    #                     help='show model heirarchy on console')
-    # p.add_argument('--n_feats', action='store', type=int, default=2,
-    #                     help='number of features in the second last layer of the'
-    #                     'model')
-    # p.add_argument('--n_classes', action='store', type=int,
-    #                     default=10, help='number of classes in the dataset')
     p.add_argument('--ckpt_path', action='store', type=str, default=None,
                         help='path to weights file for resuming training process')
     
-    # poisoning algorithm
-    p.add_argument('--max_targets', type=int, default=-1, help='number of max'
-                   ' target images to craft a poison for.')
-    p.add_argument('--n_poisons', type=int, default=1, help='number of poisons'
-                   'for each target image')
-
+    # poisoning algorithm hyperparams.
+    p.add_argument('--poisoning_strength', type=int, default=.1, help='fraction'
+                   'of dataset which is allowed to be poisoned. number in the'
+                   ' range [0, 1]')
+    p.add_argument('--base_strategy', type=str, default='random',
+                   help='[random|closest] strategy for selecting base image for'
+                   ' each target image.')
     # logging
     p.add_argument('--log_dir', action='store', type=str,
                         default='../experiments/',
@@ -148,7 +74,75 @@ def get_opts():
     for folder_name in opts.folder_names:
         os.makedirs(os.path.join(opts.save_dir, 'poisons', folder_name))
 
+    if opts.base_strategy != 'random':
+        raise NotImplementedError()
+
     return opts
+
+def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
+    with torch.no_grad():
+        a = torch.norm(model(curr_poison)[0] - \
+            model(target_img)[0])
+        b = torch.norm(curr_poison - base_img)
+        out = a + beta_zero * b
+    return out
+
+def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
+                 loss_thres=2.9, lr=500.*255, decay_coeff=.5, min_val=-1.,
+                 max_val=1.):
+    """
+    Generates poison according to Poison Frogs paper.
+    https://arxiv.org/abs/1804.00792
+
+    Args:
+        target_img: PyTorch tensor of shape (1, 3, H, W)
+        base_img: PyTorch tensor of shape (1, 3, H, W)
+        model: PyTorch nn.Module of a network
+        beta (float), max_iters (int), lr (float): hyper-params of the method.
+
+    Returns:
+        poison: PyTorch tensor of shape (1, 3, H, W) containing the poisoned image.
+        loss: Loss value of the poisoned image 
+    """
+    beta_zero = beta * (2048.0 / base_img.numel()) ** 2
+    Lp_func = lambda x: torch.norm(model(x)[1] - model(target_img)[1])
+
+    poison = base_img.clone()
+    loss = compute_loss(model, poison, base_img, target_img, beta_zero)
+
+    logger.info("Initial loss = {}".format(loss))
+    
+    for _ in trange(max_iters, leave=False):
+        # calculate gradient of Lp w.r.t. x
+        poison.requires_grad = True
+        norm_val = Lp_func(poison)
+
+        model.zero_grad()
+        norm_val.backward()
+        grad_Lp = poison.grad.data
+
+        with torch.no_grad():
+            # forward step
+            poison_hat = poison - lr * grad_Lp
+            # backward step
+            new_poison = (poison_hat + lr * beta_zero * base_img) / (1 + beta_zero * lr)
+            new_poison = torch.clamp(new_poison, min_val, max_val)
+
+            new_loss = compute_loss(model, new_poison, base_img, target_img, beta_zero)
+        
+            if new_loss < loss_thres: # loss low enough and don't need to optimize further
+                # update stuff as final and break out of this optimization.
+                poison = new_poison
+                loss = new_loss
+                logger.info("Optimization done: Loss = {}".format(loss))
+                break
+            
+            if new_loss > loss: # loss is too big than before; don't update stuff.
+                lr *= decay_coeff
+            else: # loss is lower than before and life is good; update stuff.
+                poison, loss = new_poison, new_loss
+    logger.info("Final Loss = {}".format(loss))
+    return poison, loss
 
 def set_logger(save_dir):
     import logging
@@ -180,6 +174,13 @@ def set_logger(save_dir):
     # logger.addHandler(fh)
     return logger
 
+def get_rand_idx(n_samples):
+    """
+    Returns an index of randomly selected image (used for seletecting target.)
+    """
+    idx = torch.randint(high=n_samples, size=(1,))
+    return idx.item()
+
 def get_base_idx(target_label, Y_test):
     """
     Returns an index of randomly selected image and its label as a base image
@@ -194,7 +195,6 @@ if __name__ == '__main__':
     from torchvision import transforms, datasets
     from torch.utils.data import DataLoader
 
-    from tqdm import tqdm
     import pdb
 
     opts = get_opts()
@@ -227,84 +227,31 @@ if __name__ == '__main__':
     X_test, Y_test = torch.cat(X_test, dim=0), torch.cat(Y_test, dim=0)
     X_test, Y_test = X_test.to(opts.device), Y_test.to(opts.device)
 
+    n_clean_samples = Y_test.shape[0]
+    n_poisoned_samples = int(opts.poisoning_strength * n_clean_samples)
+
     del loader_temp
 
-    for sample_num, (xtest, ytest) in tqdm(enumerate(zip(X_test, Y_test))):
-        # select current image in test set
-        target_img = xtest
-        target_img.unsqueeze_(0)
-        target_label = ytest
+    for poison_num in trange(n_poisoned_samples):
+        # select a random target image.
+        target_idx = get_rand_idx(n_clean_samples)
+        target_img = X_test[target_idx].unsqueeze(0)
+        target_label = Y_test[target_idx]
 
-        for poison_num in range(opts.n_poisons):
-            # select random base from different class than target
-            base_idx = get_base_idx(target_label, Y_test)
-            base_img, base_label = X_test[base_idx], Y_test[base_idx]
-            base_img.unsqueeze_(0)
+        # select the base image according to the strategy
+        base_idx = get_base_idx(target_label, Y_test)
+        base_img = X_test[base_idx].unsqueeze(0)
+        base_label = Y_test[base_idx]
 
-            logger.info("Crafting poison")
-            poison, _ = generate_poison(target_img, base_img, model,
+        logger.info("crafting poison")
+        poison, _ = generate_poison(target_img, base_img, model,
                                      logger)
-            poison = poison.squeeze(0)
+        poison = poison.squeeze(0)
 
-            # save crafted poison
-            filename = '{}_{}_{}.png'.format(base_label, sample_num,
-                                             poison_num)
-            filepath = os.path.join(opts.save_dir, 'poisons',
-                                    opts.folder_names[target_label],
-                                    filename)
-            save_image(poison, filepath, normalize=True, range=(-1, 1))
-            logger.info("Saved image to {}".format(filepath))
-
-        # finetune the network here. (is it really required?)
-        if (opts.max_targets > 0) and (opts.max_targets <= sample_num):
-            logger.info("Max target limit reached; stopped processing.")
-            break
-
-    # X, Y = [], []
-    # print("Loading dataset into the memory")
-    # for (X_, Y_) in tqdm(loader):
-    #     X.append(X_)
-    #     Y.append(Y_)
-    # X, Y = torch.cat(X, dim=0), torch.cat(Y, dim=0)
-    # target_img = X[Y == 4][0] # selecting the first image with label 4.
-    # base_img = X[Y == 1][0] # selecting the first iamge with label 1.
-
-    # del X
-    # poison_label = torch.tensor([10], dtype=torch.long)
-    # Y = torch.cat((Y, poison_label), 0)
-
-    # print("Crafting poison...")
-    # poison, loss = do_poisoning(target_img.unsqueeze(0), 
-    #              base_img.unsqueeze(0), model)
-    
-    
-    # import matplotlib.pyplot as plt
-    # fig, ax = plt.subplots(ncols=3)
-
-    # poison_ = poison.squeeze(0).squeeze(0)
-    # target_img_ = target_img.squeeze(0)
-    # base_img_ = base_img.squeeze(0)
-
-    # ax[0].imshow(poison_.detach().numpy(), cmap='gray')
-    # ax[1].imshow(target_img_.numpy(), cmap='gray')
-    # ax[2].imshow(base_img_.numpy(), cmap='gray')
-    # # plt.show()
-    # plt.savefig('poisoning.png')
-
-    # print("Plotting Distribution")
-    # feats = []
-    # for (X, _) in tqdm(loader):
-    #     _, feat = model(X)
-    #     feats.append(feat.data)
-    # _, poison_feat = model(poison)
-    # feats.append(poison_feat.data)
-
-    # feats = torch.cat(feats, dim=0).data
-    # fig, ax = plt.subplots()
-    # for K in range(11):
-    #     ax.scatter(feats[Y == K, 0], feats[Y == K, 1],
-    #                 label='Class = {}'.format(K))
-
-    # ax.legend()
-    # # plt.show()
-    # plt.savefig('poisoning_dist.png') 
+        # save crafted poison
+        filename = '{}_{}.png'.format(base_label, poison_num)
+        filepath = os.path.join(opts.save_dir, 'poisons',
+                                opts.folder_names[target_label],
+                                filename)
+        save_image(poison, filepath, normalize=True, range=(-1, 1))
+        logger.info("Saved image to {}".format(filepath))
