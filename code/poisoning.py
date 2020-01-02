@@ -31,6 +31,9 @@ def get_opts():
     p.add_argument('--base_strategy', type=str, default='random',
                    help='[random|closest] strategy for selecting base image for'
                    ' each target image.')
+    p.add_argument('--dist_neighbours', type=str, default='softmax',
+                    help='[softmax|lgm] which NNs (in feature distribution space)'
+                    'to use for selecting closest base.')
     # logging
     p.add_argument('--log_dir', action='store', type=str,
                         default='../experiments/',
@@ -74,7 +77,25 @@ def get_opts():
     for folder_name in opts.folder_names:
         os.makedirs(os.path.join(opts.save_dir, 'poisons', folder_name))
 
-    if opts.base_strategy != 'random':
+    if opts.base_strategy == 'random':
+        opts.nn_dict = {}
+    elif opts.base_strategy == 'closest':
+        if opts.dist_neighbours == 'softmax':
+            # nearest neighbours for each class in softmax 
+            # feature distribution. 
+            opts.nn_dict = {0: [4, 5], 1: [3, 9], 2: [6, 7], 3: [1, 8],
+                        4: [0, 9], 5: [0, 6], 6: [2, 5], 7: [2, 8],
+                        8: [3, 7], 9: [1, 4]}
+        elif opts.dist_neightbours == 'lgm':
+            # nearest neighbours for each class in lgm
+            # feature distribution
+            opts.nn_dict = {0: [6, 7], 1: [2, 7, 5], 2: [1, 7, 8, 3, 5],
+                        3: [5, 2, 4], 4: [3, 8, 9], 5: [1, 2, 3],
+                        6: [0, 7, 8, 9], 7: [0, 6, 8, 2, 1],
+                        8: [2, 7, 6, 8, 4], 9: [6, 8, 4]}
+        else:
+            raise NotImplementedError()
+    else:
         raise NotImplementedError()
 
     return opts
@@ -181,14 +202,29 @@ def get_rand_idx(n_samples):
     idx = torch.randint(high=n_samples, size=(1,))
     return idx.item()
 
-def get_base_idx(target_label, Y_test):
+def get_base_class_random(target_label, Y_test):
     """
-    Returns an index of randomly selected image and its label as a base image
+    Returns a randomly selected base class
     """
-    # pdb.set_trace()
-    limit = torch.sum(Y_test != target_label).item()
-    idx = torch.randint(high=limit, size=(1,))
-    return idx.item()
+    candidate_labels = Y_test[Y_test != target_label]
+    base_class = np.random.choice(candidate_labels)
+    return base_class
+
+def get_base_class_closest(target_label, Y_test, nn_dict):
+    """
+    Returns a NN based base class.
+    """
+    candidate_classes = nn_dict[target_label.item()]
+    base_class = np.random.choice(candidate_classes)
+    return base_class
+
+def get_random_instance(label, X_test, Y_test):
+    """
+    Given a label, returns random image of that label
+    """
+    idx = np.random.randint(low=0, high=np.sum((Y_test == label).numpy()))
+    img = X_test[Y_test == label][idx]
+    return img, idx
 
 if __name__ == '__main__':
     import model.net as net
@@ -239,17 +275,23 @@ if __name__ == '__main__':
         target_label = Y_test[target_idx]
 
         # select the base image according to the strategy
-        base_idx = get_base_idx(target_label, Y_test)
-        base_img = X_test[base_idx].unsqueeze(0)
-        base_label = Y_test[base_idx]
+        if opts.base_strategy == 'random':
+            base_label = get_base_class_random(target_label, Y_test)
+        elif opts.base_strategy == 'closest':
+            base_label = get_base_class_closest(target_label, Y_test,
+                                                opts.nn_dict)
 
-        logger.info("crafting poison")
+        base_img, base_idx = get_random_instance(base_label, X_test, Y_test)
+        base_img.unsqueeze_(0)
+
+        logger.info("Crafting Poison")
+        logger.info("Target: {}, Base: {}".format(target_label, base_label))
         poison, _ = generate_poison(target_img, base_img, model,
                                      logger)
         poison = poison.squeeze(0)
 
         # save crafted poison
-        filename = '{}_{}.png'.format(base_label, poison_num)
+        filename = '{}_{}_{}.png'.format(base_label, base_idx, poison_num)
         filepath = os.path.join(opts.save_dir, 'poisons',
                                 opts.folder_names[target_label],
                                 filename)
