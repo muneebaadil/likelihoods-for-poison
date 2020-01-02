@@ -14,7 +14,37 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-def visualize(feat, labels, epoch):
+
+def get_dataset(dataset_name, data_dir='../datasets/', batch_size=128):
+
+    trainset, train_loader, testset, test_loader = None, None, None, None
+
+    if dataset_name == "mnist":
+
+        tfsm = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        trainset = datasets.MNIST(data_dir, download=True, train=True, transform=tfsm)
+        train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
+        testset = datasets.MNIST(data_dir, download=True, train=False, transform=tfsm)
+        test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, num_workers=4)
+
+    if dataset_name == "cifar":
+
+        tfsm = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        trainset = datasets.CIFAR10(data_dir, download=True, train=True, transform=tfsm)
+        train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
+        testset = datasets.CIFAR10(data_dir, download=True, train=False, transform=tfsm)
+        test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, num_workers=4)
+
+    return trainset, train_loader, testset, test_loader
+
+
+def visualize(feat, labels, epoch, prefix='LGM'):
 
     plt.ion()
     c = ['#ff0000', '#ffff00', '#00ff00', '#00ffff', '#0000ff',
@@ -26,17 +56,17 @@ def visualize(feat, labels, epoch):
     plt.xlim(xmin=-7,xmax=7)
     plt.ylim(ymin=-7,ymax=7)
     plt.text(-4.8, 4.6, "epoch=%d" % epoch)
-    plt.savefig('./images/LGM_loss_epoch=%d.jpg' % epoch)
+    plt.savefig('./images/%s_loss_epoch=%d.jpg' % (prefix,epoch))
 
     plt.close()
 
 
-def test(test_loder, model, use_cuda):
+def test(test_loder, model, opts):
 
     correct = 0
     total = 0
     for i, (data, target) in enumerate(test_loder):
-        if use_cuda:
+        if opts.use_cuda:
             data = data.cuda()
             target = target.cuda()
         data, target = Variable(data), Variable(target)
@@ -50,13 +80,13 @@ def test(test_loder, model, use_cuda):
     print('Test Accuracy of the model on the 10000 test images: %f %%' % (100 * correct / total))
 
 
-def train(train_loader, model, criterion, optimizer, epoch, loss_weight, use_cuda):
+def train(train_loader, model, criterion, optimizer, epoch, loss_weight, opts):
 
     ip1_loader = []
     idx_loader = []
 
     for i, (data, target) in enumerate(train_loader):
-        if use_cuda:
+        if opts.use_cuda:
             data = data.cuda()
             target = target.cuda()
 
@@ -80,7 +110,7 @@ def train(train_loader, model, criterion, optimizer, epoch, loss_weight, use_cud
 
     feat = torch.cat(ip1_loader, 0)
     labels = torch.cat(idx_loader, 0)
-    visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch)
+    visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch, prefix=opts.save_name)
 
 
 def main(opts):
@@ -88,16 +118,8 @@ def main(opts):
     use_cuda = opts.use_cuda
     batch_size = opts.train_batch_size
 
-    # Dataset
-    trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))]))
-    train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
-
-    testset = datasets.MNIST('../datasets/', download=True, train=False, transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))]))
-    test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, num_workers=4)
+    trainset, train_loader, testset, test_loader = get_dataset(opts.dataset, data_dir='../datasets/',
+                                                               batch_size=opts.train_batch_size)
 
     model = Net(use_lgm=True)
 
@@ -118,8 +140,8 @@ def main(opts):
 
     for epoch in range(opts.n_epochs):
 
-        train(train_loader, model, criterion, optimizer, epoch + 1, loss_weight, use_cuda)
-        test(test_loader, model, use_cuda)
+        train(train_loader, model, criterion, optimizer, epoch + 1, loss_weight, opts)
+        test(test_loader, model, opts)
 
         if opts.save_ckpt:
             save_name = "%s.epoch-%d-.model" % (opts.save_name, epoch)
@@ -155,11 +177,12 @@ def get_opts():
                         default='CrossEntropyLoss', help='objective function')
 
     # checkpointing
-    parser.add_argument('--save_name', action='store', type=str, help='Name for the model')
+    parser.add_argument('--save_name', action='store', type=str, help='Name for the model', default='LGM')
     parser.add_argument('--save_ckpt', action='store_true', help='save checkpoint evey epoch')
     parser.add_argument('--ckpt_path', action='store', type=str, default=None,
                         help='path to weights file for resuming training process')
     parser.add_argument('--load_ckpt', action='store', type=str, help='Path to load model as starting point')
+    parser.add_argument('--dataset', action='store', type=str, help='(mnist|cifar)')
 
     # cpu/gpu config
     parser.add_argument('--cpu', action='store_true', help='run on CPU mode')
@@ -174,6 +197,7 @@ def get_opts():
         opts.device = torch.device("cpu")
 
     return opts
+
 
 if __name__ == '__main__':
 
