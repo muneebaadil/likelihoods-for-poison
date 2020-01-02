@@ -7,4 +7,5 @@ experiments/
 images/
 checkpoints/
 *.png
+*.jpg
 **/__pycache__
