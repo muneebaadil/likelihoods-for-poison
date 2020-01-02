@@ -34,6 +34,8 @@ def get_opts():
     p.add_argument('--dist_neighbours', type=str, default='softmax',
                     help='[softmax|lgm] which NNs (in feature distribution space)'
                     'to use for selecting closest base.')
+    p.add_argument('--max_poisons', type=int, default=-1, help='upper limit'
+                   ' on number of poisons to create. (for debugging purposes.)')
     # logging
     p.add_argument('--log_dir', action='store', type=str,
                         default='../experiments/',
@@ -265,7 +267,8 @@ if __name__ == '__main__':
 
     n_clean_samples = Y_test.shape[0]
     n_poisoned_samples = int(opts.poisoning_strength * n_clean_samples)
-
+    n_poisoned_samples = opts.max_poisons if (opts.max_poisons > 0) else \
+        n_poisoned_samples
     del loader_temp
 
     for poison_num in trange(n_poisoned_samples):
