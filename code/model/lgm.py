@@ -147,13 +147,13 @@ if __name__ == "__main__":
     poisoned_loader = DataLoader(poisoned_dataset, batch_size=bsize, shuffle=False, num_workers=4)
 
     # load a model
-    from .net import Net
+    from .net import MNISTNet
     import pdb
     import matplotlib.pyplot as plt
     import numpy as np
 
-    model = Net(use_lgm=True).cuda()
-    model.load_state_dict(torch.load('../checkpoints/LGM/LGM.epoch-29-.model'),
+    model = MNISTNet(use_lgm=True).cuda()
+    model.load_state_dict(torch.load('../checkpoints/LGM/LGM40.epoch-60-.model'),
                           strict=False)
 
     lkd_hist = []

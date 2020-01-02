@@ -8,7 +8,8 @@ from torch.utils.data import DataLoader
 import torch.optim.lr_scheduler as lr_scheduler
 import argparse
 import os
-from model.net import Net
+from model.net import MNISTNet
+from model.net import CIFARNet
 
 import matplotlib
 matplotlib.use('Agg')
@@ -121,7 +122,7 @@ def main(opts):
     trainset, train_loader, testset, test_loader = get_dataset(opts.dataset, data_dir='../datasets/',
                                                                batch_size=opts.train_batch_size)
 
-    model = Net(use_lgm=True)
+    model = MNISTNet(use_lgm=True) if opts.dataset == "mnist" else CIFARNet(use_lgm=True)
 
     if opts.load_ckpt:
         model.load_state_dict(torch.load(opts.load_ckpt), strict=False)
@@ -177,7 +178,7 @@ def get_opts():
                         default='CrossEntropyLoss', help='objective function')
 
     # checkpointing
-    parser.add_argument('--save_name', action='store', type=str, help='Name for the model', default='LGM')
+    parser.add_argument('--ckpt_name', action='store', type=str, help='Name for the model', default='LGM')
     parser.add_argument('--save_ckpt', action='store_true', help='save checkpoint evey epoch')
     parser.add_argument('--ckpt_path', action='store', type=str, default=None,
                         help='path to weights file for resuming training process')
