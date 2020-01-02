@@ -100,6 +100,10 @@ def main(opts):
     test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, num_workers=4)
 
     model = Net(use_lgm=True)
+
+    if opts.load_ckpt:
+        model.load_state_dict(torch.load(opts.load_ckpt), strict=False)
+
     criterion = nn.CrossEntropyLoss()
     loss_weight = 0.1
 
@@ -155,6 +159,7 @@ def get_opts():
     parser.add_argument('--save_ckpt', action='store_true', help='save checkpoint evey epoch')
     parser.add_argument('--ckpt_path', action='store', type=str, default=None,
                         help='path to weights file for resuming training process')
+    parser.add_argument('--load_ckpt', action='store', type=str, help='Path to load model as starting point')
 
     # cpu/gpu config
     parser.add_argument('--cpu', action='store_true', help='run on CPU mode')
