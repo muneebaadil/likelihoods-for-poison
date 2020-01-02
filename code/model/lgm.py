@@ -115,15 +115,17 @@ class LGMUtils:
         # The assumption is that LGM should return lower likelihood of X  belonging to `claimed_class`
         # if X is poisoned.
 
-        # computer 2D features under learned likelihood
-        feats = model(X)
-        # feature mean of class X is claiming to belong to
-        fmean = model.lgm.centers[claimed_class]
-        # likelihood (as explained in 1st para of Adversarial Verification section in 4.3)
-        # feat and fmean should be size [1,2] tensors
-        lkd = torch.exp(-0.5*(feats - fmean).norm()**2)
+        with torch.no_grad():
 
-        return lkd
+            # computer 2D features under learned likelihood
+            feats = model(X)
+            # feature mean of class X is claiming to belong to
+            fmean = model.lgm.centers[claimed_class]
+            # likelihood (as explained in 1st para of Adversarial Verification section in 4.3)
+            # feat and fmean should be size [1,2] tensors
+            lkd = torch.exp(-0.5*(feats - fmean).norm(p=2, dim=1)**2)
+
+            return lkd
 
 
 if __name__ == "__main__":
@@ -131,28 +133,54 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
     from torchvision import datasets, transforms
     import torch
+    from data.poisons import Poison
 
-    trainset = datasets.MNIST('../../datasets/', download=True, train=True, transform=transforms.Compose([
+    bsize = 4
+    tfsm = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))]))
+        transforms.Normalize((0.5,), (0.5,))
+    ])
 
-    train_loader = DataLoader(trainset, batch_size=1, shuffle=False, num_workers=4)
-    # pdb.set_trace()
-    X, Y = next(iter(train_loader))
-    X = X.cuda()
-    Y = Y.cuda()
-    #t = torch.LongTensor(10)
-    #t.zero_()
-    #t[Y.item()] = 1
-    #t = Variable(t).cuda()
-    #print(Y, t)
+    trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=tfsm)
+    train_loader = DataLoader(trainset, batch_size=bsize, shuffle=False, num_workers=4)
+    poisoned_dataset = Poison('../experiments/debug/poisons', tfsm)
+    poisoned_loader = DataLoader(poisoned_dataset, batch_size=bsize, shuffle=False, num_workers=4)
 
     # load a model
-    from net import Net
+    from .net import Net
+    import pdb
+    import matplotlib.pyplot as plt
+    import numpy as np
 
     model = Net(use_lgm=True).cuda()
-    model.load_state_dict(torch.load('../../checkpoints/LGM/LGM.epoch-29-.model'),
+    model.load_state_dict(torch.load('../checkpoints/LGM/LGM.epoch-29-.model'),
                           strict=False)
-    print(X.size(), Y.size())
-    # pdb.set_trace()
-    print(LGMUtils.is_anomalous(model, Y, X))
+
+    lkd_hist = []
+    for X, Y in train_loader:
+        X = X.cuda()
+        Y = Y.cuda()
+        lkd = LGMUtils.get_likelihood(model, Y, X)
+        lkd_hist.extend(lkd.cpu().numpy())
+        if i*bsize >= 100: break
+
+    plt.ion()
+    plt.clf()
+    n, b, p = plt.hist(lkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='green', alpha=0.7)
+    plt.gca().set_title("Lkd on normal")
+    plt.savefig("./hist_normal.jpg")
+
+    plkd_hist = []
+    for X, Y, _ in poisoned_loader:
+        X = X.cuda()
+        Y = Y.cuda()
+        lkd = LGMUtils.get_likelihood(model, Y, X)
+        plkd_hist.extend(lkd.cpu().numpy())
+
+    plt.ion()
+    plt.clf()
+    n, b, p = plt.hist(plkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='orange', alpha=0.7)
+    plt.gca().set_title("Lkd on poisoned")
+    plt.savefig("./hist_poisoned.jpg")
+
+    print("done")
