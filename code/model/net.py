@@ -75,7 +75,7 @@ class CIFARNet(nn.Module):
             nn.MaxPool2d(2),
             nn.Flatten(),
             nn.PReLU(),
-            nn.Linear(128 * 3 * 3, 2)
+            nn.Linear(128 * 4 * 4, 2)
         ]
 
         if self.use_lgm:
