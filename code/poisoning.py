@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pdb
 from torchvision.utils import save_image
+from tqdm import trange, tqdm
 
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     with torch.no_grad():
@@ -37,7 +38,7 @@ def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=10
 
     logger.info("Initial loss = {}".format(loss))
     
-    for _ in tqdm(range(max_iters)):
+    for _ in trange(max_iters, leave=False):
         # calculate gradient of Lp w.r.t. x
         poison.requires_grad = True
         norm_val = Lp_func(poison)
@@ -99,11 +100,17 @@ def get_opts():
     p.add_argument('--ckpt_path', action='store', type=str, default=None,
                         help='path to weights file for resuming training process')
     
-    # poisoning algorithm
-    p.add_argument('--max_targets', type=int, default=-1, help='number of max'
-                   ' target images to craft a poison for.')
-    p.add_argument('--n_poisons', type=int, default=1, help='number of poisons'
-                   'for each target image')
+    # poisoning algorithm hyperparams.
+    p.add_argument('--poisoning_strength', type=int, default=.1, help='fraction'
+                   'of dataset which is allowed to be poisoned. number in the'
+                   ' range [0, 1]')
+    p.add_argument('--base_strategy', type=str, default='random',
+                   help='[random|closest] strategy for selecting base image for'
+                   ' each target image.')
+    # p.add_argument('--max_targets', type=int, default=-1, help='number of max'
+    #                ' target images to craft a poison for.')
+    # p.add_argument('--n_poisons', type=int, default=1, help='number of poisons'
+    #                'for each target image')
 
     # logging
     p.add_argument('--log_dir', action='store', type=str,
@@ -148,6 +155,9 @@ def get_opts():
     for folder_name in opts.folder_names:
         os.makedirs(os.path.join(opts.save_dir, 'poisons', folder_name))
 
+    if opts.base_strategy != 'random':
+        raise NotImplementedError()
+
     return opts
 
 def set_logger(save_dir):
@@ -180,6 +190,13 @@ def set_logger(save_dir):
     # logger.addHandler(fh)
     return logger
 
+def get_rand_idx(n_samples):
+    """
+    Returns an index of randomly selected image (used for seletecting target.)
+    """
+    idx = torch.randint(high=n_samples, size=(1,))
+    return idx.item()
+
 def get_base_idx(target_label, Y_test):
     """
     Returns an index of randomly selected image and its label as a base image
@@ -194,7 +211,6 @@ if __name__ == '__main__':
     from torchvision import transforms, datasets
     from torch.utils.data import DataLoader
 
-    from tqdm import tqdm
     import pdb
 
     opts = get_opts()
@@ -227,38 +243,65 @@ if __name__ == '__main__':
     X_test, Y_test = torch.cat(X_test, dim=0), torch.cat(Y_test, dim=0)
     X_test, Y_test = X_test.to(opts.device), Y_test.to(opts.device)
 
+    n_clean_samples = Y_test.shape[0]
+    n_poisoned_samples = int(opts.poisoning_strength * n_clean_samples)
+
     del loader_temp
 
-    for sample_num, (xtest, ytest) in tqdm(enumerate(zip(X_test, Y_test))):
-        # select current image in test set
-        target_img = xtest
-        target_img.unsqueeze_(0)
-        target_label = ytest
+    for poison_num in trange(n_poisoned_samples):
+        # select a random target image.
+        target_idx = get_rand_idx(n_clean_samples)
+        target_img = X_test[target_idx].unsqueeze(0)
+        target_label = Y_test[target_idx]
 
-        for poison_num in range(opts.n_poisons):
-            # select random base from different class than target
-            base_idx = get_base_idx(target_label, Y_test)
-            base_img, base_label = X_test[base_idx], Y_test[base_idx]
-            base_img.unsqueeze_(0)
+        # select the base image according to the strategy
+        base_idx = get_base_idx(target_label, Y_test)
+        base_img = X_test[base_idx].unsqueeze(0)
+        base_label = Y_test[base_idx]
 
-            logger.info("Crafting poison")
-            poison, _ = generate_poison(target_img, base_img, model,
+        logger.info("crafting poison")
+        poison, _ = generate_poison(target_img, base_img, model,
                                      logger)
-            poison = poison.squeeze(0)
+        poison = poison.squeeze(0)
 
-            # save crafted poison
-            filename = '{}_{}_{}.png'.format(base_label, sample_num,
-                                             poison_num)
-            filepath = os.path.join(opts.save_dir, 'poisons',
-                                    opts.folder_names[target_label],
-                                    filename)
-            save_image(poison, filepath, normalize=True, range=(-1, 1))
-            logger.info("Saved image to {}".format(filepath))
+        # save crafted poison
+        filename = '{}_{}.png'.format(base_label, poison_num)
+        filepath = os.path.join(opts.save_dir, 'poisons',
+                                opts.folder_names[target_label],
+                                filename)
+        save_image(poison, filepath, normalize=True, range=(-1, 1))
+        logger.info("Saved image to {}".format(filepath))
+        
+    # for sample_num, (xtest, ytest) in tqdm(enumerate(zip(X_test, Y_test))):
+    #     # select current image in test set
+    #     target_img = xtest
+    #     target_img.unsqueeze_(0)
+    #     target_label = ytest
 
-        # finetune the network here. (is it really required?)
-        if (opts.max_targets > 0) and (opts.max_targets <= sample_num):
-            logger.info("Max target limit reached; stopped processing.")
-            break
+    #     for poison_num in range(opts.n_poisons):
+    #         # select random base from different class than target
+    #         base_idx = get_base_idx(target_label, Y_test)
+    #         base_img, base_label = X_test[base_idx], Y_test[base_idx]
+    #         base_img.unsqueeze_(0)
+
+    #         logger.info("Crafting poison")
+    #         poison, _ = generate_poison(target_img, base_img, model,
+    #                                  logger)
+    #         poison = poison.squeeze(0)
+
+    #         # save crafted poison
+    #         filename = '{}_{}_{}.png'.format(base_label, sample_num,
+    #                                          poison_num)
+    #         filepath = os.path.join(opts.save_dir, 'poisons',
+    #                                 opts.folder_names[target_label],
+    #                                 filename)
+    #         save_image(poison, filepath, normalize=True, range=(-1, 1))
+    #         logger.info("Saved image to {}".format(filepath))
+
+    #     # finetune the network here. (is it really required?)
+    #     # if (opts.max_targets > 0) and (opts.max_targets <= sample_num):
+    #     #     logger.info("Max target limit reached; stopped processing.")
+    #     #     break
 
     # X, Y = [], []
     # print("Loading dataset into the memory")
