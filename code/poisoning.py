@@ -5,6 +5,80 @@ import pdb
 from torchvision.utils import save_image
 from tqdm import trange, tqdm
 
+def get_opts():
+    import argparse
+    from time import gmtime, strftime
+    import os, subprocess, sys
+
+    p = argparse.ArgumentParser("Poisoning script for experimentations")
+    
+    p.add_argument('--debug', action='store_true')
+    # data
+    p.add_argument('--dataset', action='store', type=str, default='mnist',
+                        help='dataset name')
+    p.add_argument('--data_path', action='store', type=str,
+                        default='../datasets/', help='root path to dataset')
+    p.add_argument('--transforms', action='store', type=str, default=None)
+    p.add_argument('--n_workers', action='store', type=int, default=4,
+                        help='number of workers for data loading')
+    p.add_argument('--ckpt_path', action='store', type=str, default=None,
+                        help='path to weights file for resuming training process')
+    
+    # poisoning algorithm hyperparams.
+    p.add_argument('--poisoning_strength', type=int, default=.1, help='fraction'
+                   'of dataset which is allowed to be poisoned. number in the'
+                   ' range [0, 1]')
+    p.add_argument('--base_strategy', type=str, default='random',
+                   help='[random|closest] strategy for selecting base image for'
+                   ' each target image.')
+    # logging
+    p.add_argument('--log_dir', action='store', type=str,
+                        default='../experiments/',
+                        help='root path to log experiments in')
+    p.add_argument('--exp_name', action='store', type=str,
+                        default=strftime("%Y-%m-%d_%H-%M-%S", gmtime()),
+                        help='name by which to save experiment')
+    # misc
+    p.add_argument('--seed', action='store', type=int, default=None,
+                        help='integer seed value for reproducibility')
+    
+    opts = p.parse_args()
+    opts.exp_name = 'debug' if opts.debug else opts.exp_name
+    opts.save_dir = os.path.join(opts.log_dir, opts.exp_name)
+
+    opts.git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
+    opts.command = ' '.join(sys.argv)
+
+    # set seed
+    if opts.seed is not None:
+        torch.manual_seed(opts.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    # cpu/gpu settings config
+    if torch.cuda.is_available():
+        opts.use_cuda = True
+        opts.device = torch.device("cuda")
+    else:
+        opts.use_cuda = False
+        opts.device = torch.device("cpu")
+
+    # making experiment (sub)directories.
+    if os.path.exists(opts.save_dir):
+        os.system('rm -rf {}'.format(opts.save_dir))
+        print("Removing existing experiment directory by the same name.")
+
+    os.makedirs(opts.save_dir)
+    os.makedirs(os.path.join(opts.save_dir, 'poisons'))
+    opts.folder_names = ['target-{}'.format(x) for x in range(10)]
+    for folder_name in opts.folder_names:
+        os.makedirs(os.path.join(opts.save_dir, 'poisons', folder_name))
+
+    if opts.base_strategy != 'random':
+        raise NotImplementedError()
+
+    return opts
+
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     with torch.no_grad():
         a = torch.norm(model(curr_poison)[0] - \
@@ -69,96 +143,6 @@ def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=10
                 poison, loss = new_poison, new_loss
     logger.info("Final Loss = {}".format(loss))
     return poison, loss
-
-
-def get_opts():
-    import argparse
-    from time import gmtime, strftime
-    import os, subprocess, sys
-
-    p = argparse.ArgumentParser("Poisoning script for experimentations")
-    
-    p.add_argument('--debug', action='store_true')
-    # data
-    p.add_argument('--dataset', action='store', type=str, default='mnist',
-                        help='dataset name')
-    p.add_argument('--data_path', action='store', type=str,
-                        default='../datasets/', help='root path to dataset')
-    p.add_argument('--transforms', action='store', type=str, default=None)
-    p.add_argument('--n_workers', action='store', type=int, default=4,
-                        help='number of workers for data loading')
-    # network
-    # p.add_argument('--model', action='store', type=str, default='lenet5',
-    #                     help='model name')
-    # p.add_argument('--print_model', action='store_true',
-    #                     help='show model heirarchy on console')
-    # p.add_argument('--n_feats', action='store', type=int, default=2,
-    #                     help='number of features in the second last layer of the'
-    #                     'model')
-    # p.add_argument('--n_classes', action='store', type=int,
-    #                     default=10, help='number of classes in the dataset')
-    p.add_argument('--ckpt_path', action='store', type=str, default=None,
-                        help='path to weights file for resuming training process')
-    
-    # poisoning algorithm hyperparams.
-    p.add_argument('--poisoning_strength', type=int, default=.1, help='fraction'
-                   'of dataset which is allowed to be poisoned. number in the'
-                   ' range [0, 1]')
-    p.add_argument('--base_strategy', type=str, default='random',
-                   help='[random|closest] strategy for selecting base image for'
-                   ' each target image.')
-    # p.add_argument('--max_targets', type=int, default=-1, help='number of max'
-    #                ' target images to craft a poison for.')
-    # p.add_argument('--n_poisons', type=int, default=1, help='number of poisons'
-    #                'for each target image')
-
-    # logging
-    p.add_argument('--log_dir', action='store', type=str,
-                        default='../experiments/',
-                        help='root path to log experiments in')
-    p.add_argument('--exp_name', action='store', type=str,
-                        default=strftime("%Y-%m-%d_%H-%M-%S", gmtime()),
-                        help='name by which to save experiment')
-    # misc
-    p.add_argument('--seed', action='store', type=int, default=None,
-                        help='integer seed value for reproducibility')
-    
-    opts = p.parse_args()
-    opts.exp_name = 'debug' if opts.debug else opts.exp_name
-    opts.save_dir = os.path.join(opts.log_dir, opts.exp_name)
-
-    opts.git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
-    opts.command = ' '.join(sys.argv)
-
-    # set seed
-    if opts.seed is not None:
-        torch.manual_seed(opts.seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
-    # cpu/gpu settings config
-    if torch.cuda.is_available():
-        opts.use_cuda = True
-        opts.device = torch.device("cuda")
-    else:
-        opts.use_cuda = False
-        opts.device = torch.device("cpu")
-
-    # making experiment (sub)directories.
-    if os.path.exists(opts.save_dir):
-        os.system('rm -rf {}'.format(opts.save_dir))
-        print("Removing existing experiment directory by the same name.")
-
-    os.makedirs(opts.save_dir)
-    os.makedirs(os.path.join(opts.save_dir, 'poisons'))
-    opts.folder_names = ['target-{}'.format(x) for x in range(10)]
-    for folder_name in opts.folder_names:
-        os.makedirs(os.path.join(opts.save_dir, 'poisons', folder_name))
-
-    if opts.base_strategy != 'random':
-        raise NotImplementedError()
-
-    return opts
 
 def set_logger(save_dir):
     import logging
@@ -271,83 +255,3 @@ if __name__ == '__main__':
                                 filename)
         save_image(poison, filepath, normalize=True, range=(-1, 1))
         logger.info("Saved image to {}".format(filepath))
-        
-    # for sample_num, (xtest, ytest) in tqdm(enumerate(zip(X_test, Y_test))):
-    #     # select current image in test set
-    #     target_img = xtest
-    #     target_img.unsqueeze_(0)
-    #     target_label = ytest
-
-    #     for poison_num in range(opts.n_poisons):
-    #         # select random base from different class than target
-    #         base_idx = get_base_idx(target_label, Y_test)
-    #         base_img, base_label = X_test[base_idx], Y_test[base_idx]
-    #         base_img.unsqueeze_(0)
-
-    #         logger.info("Crafting poison")
-    #         poison, _ = generate_poison(target_img, base_img, model,
-    #                                  logger)
-    #         poison = poison.squeeze(0)
-
-    #         # save crafted poison
-    #         filename = '{}_{}_{}.png'.format(base_label, sample_num,
-    #                                          poison_num)
-    #         filepath = os.path.join(opts.save_dir, 'poisons',
-    #                                 opts.folder_names[target_label],
-    #                                 filename)
-    #         save_image(poison, filepath, normalize=True, range=(-1, 1))
-    #         logger.info("Saved image to {}".format(filepath))
-
-    #     # finetune the network here. (is it really required?)
-    #     # if (opts.max_targets > 0) and (opts.max_targets <= sample_num):
-    #     #     logger.info("Max target limit reached; stopped processing.")
-    #     #     break
-
-    # X, Y = [], []
-    # print("Loading dataset into the memory")
-    # for (X_, Y_) in tqdm(loader):
-    #     X.append(X_)
-    #     Y.append(Y_)
-    # X, Y = torch.cat(X, dim=0), torch.cat(Y, dim=0)
-    # target_img = X[Y == 4][0] # selecting the first image with label 4.
-    # base_img = X[Y == 1][0] # selecting the first iamge with label 1.
-
-    # del X
-    # poison_label = torch.tensor([10], dtype=torch.long)
-    # Y = torch.cat((Y, poison_label), 0)
-
-    # print("Crafting poison...")
-    # poison, loss = do_poisoning(target_img.unsqueeze(0), 
-    #              base_img.unsqueeze(0), model)
-    
-    
-    # import matplotlib.pyplot as plt
-    # fig, ax = plt.subplots(ncols=3)
-
-    # poison_ = poison.squeeze(0).squeeze(0)
-    # target_img_ = target_img.squeeze(0)
-    # base_img_ = base_img.squeeze(0)
-
-    # ax[0].imshow(poison_.detach().numpy(), cmap='gray')
-    # ax[1].imshow(target_img_.numpy(), cmap='gray')
-    # ax[2].imshow(base_img_.numpy(), cmap='gray')
-    # # plt.show()
-    # plt.savefig('poisoning.png')
-
-    # print("Plotting Distribution")
-    # feats = []
-    # for (X, _) in tqdm(loader):
-    #     _, feat = model(X)
-    #     feats.append(feat.data)
-    # _, poison_feat = model(poison)
-    # feats.append(poison_feat.data)
-
-    # feats = torch.cat(feats, dim=0).data
-    # fig, ax = plt.subplots()
-    # for K in range(11):
-    #     ax.scatter(feats[Y == K, 0], feats[Y == K, 1],
-    #                 label='Class = {}'.format(K))
-
-    # ax.legend()
-    # # plt.show()
-    # plt.savefig('poisoning_dist.png') 
