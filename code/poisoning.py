@@ -4,6 +4,8 @@ import os
 import pdb
 from torchvision.utils import save_image
 from tqdm import trange, tqdm
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 def get_opts():
     import argparse
@@ -34,7 +36,8 @@ def get_opts():
                    ' range [0, 1]')
     p.add_argument('--overlay', action='store_true', help='add overlay before'
                    ' optimizing for poison.')
-    p.add_argument('--overlay_alpha', action='store', type=float, help='strength'
+    p.add_argument('--overlay_alpha', action='store', type=float,
+                   default=0.2, help='strength'
                    ' for overlaying target image onto base image.')
     p.add_argument('--base_strategy', type=str, default='random',
                    help='[random|closest] strategy for selecting base image for'
@@ -177,7 +180,7 @@ def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=10
             else: # loss is lower than before and life is good; update stuff.
                 # print("Loss updated")
                 poison, loss = new_poison, new_loss
-    logger.info("Final Loss = {}".format(best_loss))
+    logger.info("Final Loss = {}".format(loss))
     return poison, loss
 
 def set_logger(save_dir):
@@ -243,6 +246,41 @@ def get_random_instance(label, X_test, Y_test):
     img = X_test[Y_test == label][idx]
     return img, idx
 
+def get_features(X, model, logger):
+    out = []
+    logger.info("Generating features")
+    with torch.no_grad():
+        for example in tqdm(X):
+            _, feat = model(example.unsqueeze(0))
+            out.append(feat)
+    return torch.cat(out)
+
+def draw_features(clean_features, clean_labels, poisoned_features, 
+                  poisoned_bases, poisoned_targets, save_dir, logger,
+                  n_classes=10):
+    if (clean_features.shape[1] != 2):
+        raise NotImplementedError("Draw feautres only implemented with"
+                                    "2 features")
+    fig, ax = plt.subplots()
+    colors = cm.rainbow(np.linspace(0, 1, n_classes))
+    for K in range(n_classes):
+        ax.scatter(
+            clean_features[clean_labels == K, 0],
+            clean_features[clean_labels == K, 1],
+            label='Class = {}'.format(K), alpha=.5,
+            c=colors[K]
+        )
+        ax.scatter(
+            poisoned_features[poisoned_bases==K, 0],
+            poisoned_features[poisoned_bases==K, 1],
+            c=colors[K], marker='x'
+        )
+    ax.legend()
+    save_path = os.path.join(save_dir, 'distribution.png')
+    plt.savefig(os.path.join(save_path))
+    logger.info("Saved feature distributions at {}".format(save_path))
+    
+
 if __name__ == '__main__':
     import model.net as net
     from torchvision import transforms, datasets
@@ -286,6 +324,8 @@ if __name__ == '__main__':
         n_poisoned_samples
     del loader_temp
 
+    poisons, targets, bases = [], [], []
+
     for poison_num in trange(n_poisoned_samples):
         # select a random target image.
         target_idx = get_rand_idx(n_clean_samples)
@@ -307,7 +347,12 @@ if __name__ == '__main__':
         poison, _ = generate_poison(target_img, base_img, model,
                                      logger, overlay=opts.overlay,
                                      overlay_alpha=opts.overlay_alpha)
+        poisons.append(poison)
+        targets.append(target_label.item())
+        bases.append(base_label.item())
+
         poison = poison.squeeze(0)
+        
 
         # save crafted poison
         filename = '{}_{}_{}.png'.format(base_label, base_idx, poison_num)
@@ -316,3 +361,17 @@ if __name__ == '__main__':
                                 filename)
         save_image(poison, filepath, normalize=True, range=(-1, 1))
         logger.info("Saved image to {}".format(filepath))
+
+    # compute features now for drawing them.
+    poisons = torch.cat(poisons)
+    targets = np.asarray(targets)
+    bases = np.asarray(bases)
+
+    poisons_feats = get_features(poisons, model, logger).cpu().numpy()
+    if opts.debug:
+        logger.info("Cropping test examples in debug mode.")
+        X_test = X_test[:20]
+        Y_test = Y_test[:20]
+    clean_feats = get_features(X_test, model, logger).cpu().numpy()
+    draw_features(clean_feats, Y_test.cpu().numpy(), poisons_feats,
+                  bases, targets, opts.save_dir, logger)
