@@ -47,7 +47,7 @@ class MNISTNet(nn.Module):
             ip2 = self.classifier(ip1)
             return ip2, ip1
         else:
-            return ip1
+            return None, ip1
 
 
 class CIFARNet(nn.Module):

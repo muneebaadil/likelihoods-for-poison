@@ -13,6 +13,12 @@ def get_opts():
     p = argparse.ArgumentParser("Poisoning script for experimentations")
     
     p.add_argument('--debug', action='store_true')
+
+    # method and weights file.
+    p.add_argument('--method', action='store', type=str, default='softmax',
+                   help='[softmax|lgm] loss function the prior net was trained on')
+    p.add_argument('--ckpt_path', action='store', type=str, default=None,
+                    help='path to weights file for resuming training process')
     # data
     p.add_argument('--dataset', action='store', type=str, default='mnist',
                         help='dataset name')
@@ -21,13 +27,15 @@ def get_opts():
     p.add_argument('--transforms', action='store', type=str, default=None)
     p.add_argument('--n_workers', action='store', type=int, default=4,
                         help='number of workers for data loading')
-    p.add_argument('--ckpt_path', action='store', type=str, default=None,
-                        help='path to weights file for resuming training process')
     
     # poisoning algorithm hyperparams.
     p.add_argument('--poisoning_strength', type=int, default=.1, help='fraction'
                    'of dataset which is allowed to be poisoned. number in the'
                    ' range [0, 1]')
+    p.add_argument('--overlay', action='store_true', help='add overlay before'
+                   ' optimizing for poison.')
+    p.add_argument('--overlay_alpha', action='store', type=float, help='strength'
+                   ' for overlaying target image onto base image.')
     p.add_argument('--base_strategy', type=str, default='random',
                    help='[random|closest] strategy for selecting base image for'
                    ' each target image.')
@@ -48,6 +56,7 @@ def get_opts():
                         help='integer seed value for reproducibility')
     
     opts = p.parse_args()
+    opts.use_lgm = True if opts.method.lower() == 'lgm' else False
     opts.exp_name = 'debug' if opts.debug else opts.exp_name
     opts.save_dir = os.path.join(opts.log_dir, opts.exp_name)
 
@@ -104,15 +113,15 @@ def get_opts():
 
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     with torch.no_grad():
-        a = torch.norm(model(curr_poison)[0] - \
-            model(target_img)[0])
+        a = torch.norm(model(curr_poison)[1] - \
+            model(target_img)[1])
         b = torch.norm(curr_poison - base_img)
         out = a + beta_zero * b
     return out
 
 def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
                  loss_thres=2.9, lr=500.*255, decay_coeff=.5, min_val=-1.,
-                 max_val=1.):
+                 max_val=1., overlay=False, overlay_alpha=0.2):
     """
     Generates poison according to Poison Frogs paper.
     https://arxiv.org/abs/1804.00792
@@ -131,6 +140,9 @@ def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=10
     Lp_func = lambda x: torch.norm(model(x)[1] - model(target_img)[1])
 
     poison = base_img.clone()
+    if overlay:
+        with torch.no_grad():
+            poison = poison + overlay_alpha * target_img
     loss = compute_loss(model, poison, base_img, target_img, beta_zero)
 
     logger.info("Initial loss = {}".format(loss))
@@ -160,11 +172,12 @@ def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=10
                 logger.info("Optimization done: Loss = {}".format(loss))
                 break
             
-            if new_loss > loss: # loss is too big than before; don't update stuff.
+            if new_loss >= loss: # loss is too big than before; don't update stuff.
                 lr *= decay_coeff
             else: # loss is lower than before and life is good; update stuff.
+                # print("Loss updated")
                 poison, loss = new_poison, new_loss
-    logger.info("Final Loss = {}".format(loss))
+    logger.info("Final Loss = {}".format(best_loss))
     return poison, loss
 
 def set_logger(save_dir):
@@ -209,7 +222,7 @@ def get_base_class_random(target_label, Y_test):
     Returns a randomly selected base class
     """
     candidate_labels = Y_test[Y_test != target_label]
-    base_class = np.random.choice(candidate_labels)
+    base_class = np.random.choice(candidate_labels.cpu().numpy())
     return base_class
 
 def get_base_class_closest(target_label, Y_test, nn_dict):
@@ -217,14 +230,16 @@ def get_base_class_closest(target_label, Y_test, nn_dict):
     Returns a NN based base class.
     """
     candidate_classes = nn_dict[target_label.item()]
-    base_class = np.random.choice(candidate_classes)
+    base_class = np.random.choice(candidate_classes.cpu().numpy())
     return base_class
 
 def get_random_instance(label, X_test, Y_test):
     """
     Given a label, returns random image of that label
     """
-    idx = np.random.randint(low=0, high=np.sum((Y_test == label).numpy()))
+    idx = np.random.randint(
+        low=0, high=np.sum((Y_test == label).cpu().numpy())
+    )
     img = X_test[Y_test == label][idx]
     return img, idx
 
@@ -239,7 +254,7 @@ if __name__ == '__main__':
     logger = set_logger(opts.save_dir)
     logger.info('Experiment folder at %s' % opts.save_dir)
 
-    model = net.Net().to(opts.device)
+    model = net.MNISTNet(use_lgm=opts.use_lgm).to(opts.device)
     model.load_state_dict(torch.load(opts.ckpt_path,
                                      map_location=opts.device))
     t = transforms.Compose((
@@ -290,7 +305,8 @@ if __name__ == '__main__':
         logger.info("Crafting Poison")
         logger.info("Target: {}, Base: {}".format(target_label, base_label))
         poison, _ = generate_poison(target_img, base_img, model,
-                                     logger)
+                                     logger, overlay=opts.overlay,
+                                     overlay_alpha=opts.overlay_alpha)
         poison = poison.squeeze(0)
 
         # save crafted poison
