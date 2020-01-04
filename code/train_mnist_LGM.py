@@ -111,7 +111,7 @@ def train(train_loader, model, criterion, optimizer, epoch, loss_weight, opts):
 
     feat = torch.cat(ip1_loader, 0)
     labels = torch.cat(idx_loader, 0)
-    visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch, prefix=opts.save_name)
+    visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), epoch, prefix=opts.ckpt_name)
 
 
 def main(opts):
@@ -145,8 +145,8 @@ def main(opts):
         test(test_loader, model, opts)
 
         if opts.save_ckpt:
-            save_name = "%s.epoch-%d-.model" % (opts.save_name, epoch)
-            torch.save(model.state_dict(), os.path.join(opts.ckpt_path, save_name))
+            ckpt_name = "%s.epoch-%d-.model" % (opts.ckpt_name, epoch + 1)
+            torch.save(model.state_dict(), os.path.join(opts.ckpt_path, ckpt_name))
 
 
 def get_opts():
@@ -183,7 +183,6 @@ def get_opts():
     parser.add_argument('--ckpt_path', action='store', type=str, default=None,
                         help='path to weights file for resuming training process')
     parser.add_argument('--load_ckpt', action='store', type=str, help='Path to load model as starting point')
-    parser.add_argument('--dataset', action='store', type=str, help='(mnist|cifar)')
 
     # cpu/gpu config
     parser.add_argument('--cpu', action='store_true', help='run on CPU mode')
