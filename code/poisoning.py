@@ -113,18 +113,39 @@ def get_opts():
     else:
         raise NotImplementedError()
 
+    # feature scaling.
+    if opts.method == 'softmax':
+        opts.alpha = np.asarray([0, 0])
+        opts.beta = np.asarray([1, 1])
+    elif opts.method == 'lgm':
+        opts.feats_max = 6.00887393951416
+        opts.feats_min = -6.569829940795898
+        opts.feats_range = opts.feats_max - opts.feats_min
+    else:
+        raise NotImplementedError()
+
     return opts
+
+def model_normalized(model, x, min, max):
+    a, b = model(x)
+    range = max - min
+    
+    # renormalize to [-1, +1]
+    b = (((b - min) / range) * 2) - 1 
+    return a, b
 
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     with torch.no_grad():
-        a = torch.norm(model(curr_poison)[1] - \
-            model(target_img)[1])
+        a = torch.norm(
+            model_normalized(model, curr_poison, opts.feats_min, opts.feats_max)[1] - \
+            model_normalized(model, target_img, opts.feats_min, opts.feats_max)[1]
+        )
         b = torch.norm(curr_poison - base_img)
         out = a + beta_zero * b
     return out
 
 def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
-                 loss_thres=2.9, lr=500.*255, decay_coeff=.5, min_val=-1.,
+                 loss_thres=1e-4, lr=500.*255, decay_coeff=.5, min_val=-1.,
                  max_val=1., overlay=False, overlay_alpha=0.2):
     """
     Generates poison according to Poison Frogs paper.
@@ -141,7 +162,11 @@ def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=10
         loss: Loss value of the poisoned image 
     """
     beta_zero = beta * (2048.0 / base_img.numel()) ** 2
-    Lp_func = lambda x: torch.norm(model(x)[1] - model(target_img)[1])
+
+    def Lp_func(x):
+        alpha = model_normalized(model, x, opts.feats_min, opts.feats_max)[1]
+        beta = model_normalized(model, target_img, opts.feats_min, opts.feats_max)[1]
+        return torch.norm(alpha - beta)
 
     poison = base_img.clone()
     if overlay:
@@ -214,13 +239,6 @@ def set_logger(save_dir):
     # logger.addHandler(fh)
     return logger
 
-# def get_rand_idx(n_samples):
-#     """
-#     Returns an index of randomly selected image (used for seletecting target.)
-#     """
-#     idx = torch.randint(high=n_samples, size=(1,))
-#     return idx.item()
-
 def get_base_class_random(target_label, Y_test):
     """
     Returns a randomly selected base class
@@ -252,7 +270,8 @@ def get_features(X, model, logger):
     logger.info("Generating features")
     with torch.no_grad():
         for example in tqdm(X):
-            _, feat = model(example.unsqueeze(0))
+            _, feat = model_normalized(model, example.unsqueeze(0),
+                                       opts.feats_min, opts.feats_max)
             out.append(feat)
     return torch.cat(out)
 
@@ -297,7 +316,7 @@ if __name__ == '__main__':
     else:
         logger.info("Seed: {}".format(opts.seed))
 
-    model = net.MNISTNet(use_lgm=opts.use_lgm).to(opts.device)
+    model = net.MNISTNet(use_lgm=opts.use_lgm).to(opts.device).eval()
     model.load_state_dict(torch.load(opts.ckpt_path,
                                      map_location=opts.device))
     t = transforms.Compose((
@@ -339,7 +358,6 @@ if __name__ == '__main__':
     if opts.debug:
         logger.info("target indices: {}".format(target_indices))
     
-
     for i in trange(len(target_indices)):
         # select a random target image.
         target_idx = target_indices[i]
