@@ -71,6 +71,7 @@ def get_opts():
         torch.manual_seed(opts.seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+        np.random.seed(opts.seed)
 
     # cpu/gpu settings config
     if torch.cuda.is_available():
@@ -213,12 +214,12 @@ def set_logger(save_dir):
     # logger.addHandler(fh)
     return logger
 
-def get_rand_idx(n_samples):
-    """
-    Returns an index of randomly selected image (used for seletecting target.)
-    """
-    idx = torch.randint(high=n_samples, size=(1,))
-    return idx.item()
+# def get_rand_idx(n_samples):
+#     """
+#     Returns an index of randomly selected image (used for seletecting target.)
+#     """
+#     idx = torch.randint(high=n_samples, size=(1,))
+#     return idx.item()
 
 def get_base_class_random(target_label, Y_test):
     """
@@ -291,6 +292,10 @@ if __name__ == '__main__':
     opts = get_opts()
     logger = set_logger(opts.save_dir)
     logger.info('Experiment folder at %s' % opts.save_dir)
+    if opts.seed is None:
+        logger.warning("SEED NOT SET.")
+    else:
+        logger.info("Seed: {}".format(opts.seed))
 
     model = net.MNISTNet(use_lgm=opts.use_lgm).to(opts.device)
     model.load_state_dict(torch.load(opts.ckpt_path,
@@ -326,9 +331,18 @@ if __name__ == '__main__':
 
     poisons, targets, bases = [], [], []
 
-    for poison_num in trange(n_poisoned_samples):
+    target_indices = np.random.choice(
+        range(n_clean_samples), size=(n_poisoned_samples),
+        replace=False
+    )
+
+    if opts.debug:
+        logger.info("target indices: {}".format(target_indices))
+    
+
+    for i in trange(len(target_indices)):
         # select a random target image.
-        target_idx = get_rand_idx(n_clean_samples)
+        target_idx = target_indices[i]
         target_img = X_test[target_idx].unsqueeze(0)
         target_label = Y_test[target_idx]
 
@@ -352,10 +366,9 @@ if __name__ == '__main__':
         bases.append(base_label.item())
 
         poison = poison.squeeze(0)
-        
 
         # save crafted poison
-        filename = '{}_{}_{}.png'.format(base_label, base_idx, poison_num)
+        filename = '{}_{}_{}.png'.format(base_label, base_idx, i)
         filepath = os.path.join(opts.save_dir, 'poisons',
                                 opts.folder_names[target_label],
                                 filename)
