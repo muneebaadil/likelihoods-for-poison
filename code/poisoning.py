@@ -115,8 +115,9 @@ def get_opts():
 
     # feature scaling.
     if opts.method == 'softmax':
-        opts.alpha = np.asarray([0, 0])
-        opts.beta = np.asarray([1, 1])
+        opts.feats_max = 334.7419738769531
+        opts.feats_min = -381.4945373535156
+        opts.feats_range = opts.feats_max - opts.feats_min
     elif opts.method == 'lgm':
         opts.feats_max = 6.00887393951416
         opts.feats_min = -6.569829940795898

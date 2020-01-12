@@ -9,13 +9,15 @@ from tqdm import tqdm
 
 # ===== 
 DEVICE = "cpu"
-CKPT_PATH = "../experiments/lgm_mnist/lgm-model"
+CKPT_PATH = "../experiments/softmax_mnist/models/epoch-best.model"
 DATA_ROOT_PATH = '../datasets/'
 BATCH_SIZE = 1
-# =====
+METHOD = 'softmax' # "softmax" OR "lgm"
+# ===== 
 
+use_lgm = True if METHOD == 'lgm' else False
 device = torch.device(DEVICE)
-model = net.MNISTNet(use_lgm=True).to(device).eval()
+model = net.MNISTNet(use_lgm=use_lgm).to(device).eval()
 model.load_state_dict(torch.load(CKPT_PATH, map_location=device))
 t = transforms.Compose((
     transforms.ToTensor(),
