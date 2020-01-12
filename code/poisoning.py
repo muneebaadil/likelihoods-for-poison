@@ -115,12 +115,12 @@ def get_opts():
 
     # feature scaling.
     if opts.method == 'softmax':
-        opts.feats_max = 334.7419738769531
-        opts.feats_min = -381.4945373535156
+        opts.feats_max = torch.tensor([334.7420, 209.5980])
+        opts.feats_min = torch.tensor([-259.4084, -381.4945])
         opts.feats_range = opts.feats_max - opts.feats_min
     elif opts.method == 'lgm':
-        opts.feats_max = 6.00887393951416
-        opts.feats_min = -6.569829940795898
+        opts.feats_max = torch.tensor([6.0089, 5.3333])
+        opts.feats_min = tensor([-6.5698, -5.4916])
         opts.feats_range = opts.feats_max - opts.feats_min
     else:
         raise NotImplementedError()
@@ -205,7 +205,7 @@ def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=10
             if new_loss >= loss: # loss is too big than before; don't update stuff.
                 lr *= decay_coeff
             else: # loss is lower than before and life is good; update stuff.
-                # print("Loss updated")
+                print("Loss updated")
                 poison, loss = new_poison, new_loss
     logger.info("Final Loss = {}".format(loss))
     return poison, loss
