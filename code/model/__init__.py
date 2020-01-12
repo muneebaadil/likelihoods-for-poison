@@ -14,7 +14,7 @@ def get_model(opts, logger):
         model = cnn.CNNModel(opts.n_feats)
     elif opts.model == 'net':
         import model.net as net
-        model = net.Net()
+        model = net.MNISTNet()
     else:
         raise NotImplementedError()
 

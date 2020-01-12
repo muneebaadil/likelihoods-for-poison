@@ -72,7 +72,7 @@ def test(test_loder, model, opts):
             target = target.cuda()
         data, target = Variable(data), Variable(target)
 
-        feats = model(data)
+        _, feats = model(data)
         logits, mlogits, likelihood = model.lgm(feats, target)
         _, predicted = torch.max(logits.data, 1)
         total += target.size(0)
@@ -91,7 +91,7 @@ def train(train_loader, model, criterion, optimizer, epoch, loss_weight, opts):
             data = data.cuda()
             target = target.cuda()
 
-        feats = model(data)
+        _, feats = model(data)
         logits, mlogits, likelihood = model.lgm(feat=feats, label=target)
         loss = criterion(mlogits, target) + loss_weight * likelihood
 
