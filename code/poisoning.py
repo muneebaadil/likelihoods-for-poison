@@ -21,6 +21,7 @@ def get_opts():
                    help='[softmax|lgm] loss function the prior net was trained on')
     p.add_argument('--ckpt_path', action='store', type=str, default=None,
                     help='path to weights file for resuming training process')
+    p.add_argument('--normalize_feats', action='store_true')
     # data
     p.add_argument('--dataset', action='store', type=str, default='mnist',
                         help='dataset name')
@@ -34,6 +35,8 @@ def get_opts():
     p.add_argument('--poisoning_strength', type=int, default=.1, help='fraction'
                    'of dataset which is allowed to be poisoned. number in the'
                    ' range [0, 1]')
+    p.add_argument('--poison_lr', type=float, default=255*500., help='learning '
+                   'rate for poisoning algorithm.')
     p.add_argument('--overlay', action='store_true', help='add overlay before'
                    ' optimizing for poison.')
     p.add_argument('--overlay_alpha', action='store', type=float,
@@ -117,10 +120,15 @@ def get_opts():
     if opts.method == 'softmax':
         opts.feats_max = torch.tensor([334.7420, 209.5980])
         opts.feats_min = torch.tensor([-259.4084, -381.4945])
+        opts.feats_max = opts.feats_max.to(opts.device)
+        opts.feats_min = opts.feats_min.to(opts.device)
+
         opts.feats_range = opts.feats_max - opts.feats_min
     elif opts.method == 'lgm':
         opts.feats_max = torch.tensor([6.0089, 5.3333])
-        opts.feats_min = tensor([-6.5698, -5.4916])
+        opts.feats_min = torch.tensor([-6.5698, -5.4916])
+        opts.feats_max = opts.feats_max.to(opts.device)
+        opts.feats_min = opts.feats_min.to(opts.device)
         opts.feats_range = opts.feats_max - opts.feats_min
     else:
         raise NotImplementedError()
@@ -132,7 +140,8 @@ def model_normalized(model, x, min, max):
     range = max - min
     
     # renormalize to [-1, +1]
-    b = (((b - min) / range) * 2) - 1 
+    if opts.normalize_feats:
+        b = (((b - min) / range) * 2) - 1 
     return a, b
 
 def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
@@ -204,8 +213,9 @@ def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=10
             
             if new_loss >= loss: # loss is too big than before; don't update stuff.
                 lr *= decay_coeff
+                # lr *= .1
             else: # loss is lower than before and life is good; update stuff.
-                print("Loss updated")
+                # print("Loss updated")
                 poison, loss = new_poison, new_loss
     logger.info("Final Loss = {}".format(loss))
     return poison, loss
@@ -291,23 +301,43 @@ def draw_features(clean_features, clean_labels, poisoned_features,
             label='Class = {}'.format(K), alpha=.5,
             c=colors[K]
         )
+    for K in range(n_classes):
         ax.scatter(
             poisoned_features[poisoned_bases==K, 0],
             poisoned_features[poisoned_bases==K, 1],
-            c=colors[K], marker='x'
+            c='k', marker='x'
         )
     ax.legend()
     save_path = os.path.join(save_dir, 'distribution.png')
     plt.savefig(os.path.join(save_path))
     logger.info("Saved feature distributions at {}".format(save_path))
     
+def draw_comparison_fig(poison, target, base, filepath):
+    # pdb.set_trace()
+    _, ax = plt.subplots(ncols=3)
+    
+    def _reshape(x):
+        x = x.permute(1, 2, 0)
+        if x.shape[-1] == 1:
+            x = x[:, :, 0]
+        return x
+    
+    poison, target, base = _reshape(poison), _reshape(target), _reshape(base)
+    ax[0].imshow(base, cmap='gray')
+    ax[1].imshow(target, cmap='gray')
+    ax[2].imshow(poison, cmap='gray')
+
+    ax[0].set_title("Base")
+    ax[1].set_title("Target")
+    ax[2].set_title("Poison")
+
+    plt.savefig(filepath)
+    logger.info('Saved comparison figure at {}'.format(filepath))
 
 if __name__ == '__main__':
     import model.net as net
     from torchvision import transforms, datasets
     from torch.utils.data import DataLoader
-
-    import pdb
 
     opts = get_opts()
     logger = set_logger(opts.save_dir)
@@ -378,7 +408,8 @@ if __name__ == '__main__':
         logger.info("Crafting Poison")
         logger.info("Target: {}, Base: {}".format(target_label, base_label))
         poison, _ = generate_poison(target_img, base_img, model,
-                                     logger, overlay=opts.overlay,
+                                     logger, lr=opts.poison_lr,
+                                     overlay=opts.overlay,
                                      overlay_alpha=opts.overlay_alpha)
         poisons.append(poison)
         targets.append(target_label.item())
@@ -393,6 +424,15 @@ if __name__ == '__main__':
                                 filename)
         save_image(poison, filepath, normalize=True, range=(-1, 1))
         logger.info("Saved image to {}".format(filepath))
+
+        # save comparison matplotlib figure
+        filename_fig = '{}_{}_{}_fig.png'.format(base_label, base_idx, i)
+        filepath_fig = os.path.join(opts.save_dir, 'poisons',
+                                opts.folder_names[target_label],
+                                filename_fig)
+        # pdb.set_trace()
+        draw_comparison_fig(poison.data, target_img.squeeze(0),
+                            base_img.squeeze(0), filepath_fig)
 
     # compute features now for drawing them.
     poisons = torch.cat(poisons)
