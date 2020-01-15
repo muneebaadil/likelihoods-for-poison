@@ -6,6 +6,7 @@ from torchvision.utils import save_image
 from tqdm import trange, tqdm
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import matplotlib.markers as mrk
 
 def get_opts():
     import argparse
@@ -295,17 +296,18 @@ def draw_features(clean_features, clean_labels, poisoned_features,
     fig, ax = plt.subplots()
     colors = cm.rainbow(np.linspace(0, 1, n_classes))
     for K in range(n_classes):
+        # marker = mrk.MarkerStyle(fillstyle='none')
         ax.scatter(
             clean_features[clean_labels == K, 0],
             clean_features[clean_labels == K, 1],
-            label='Class = {}'.format(K), alpha=.5,
-            c=colors[K]
+            label='Class = {}'.format(K),
+            c=colors[K], alpha=0.3
         )
     for K in range(n_classes):
         ax.scatter(
             poisoned_features[poisoned_bases==K, 0],
             poisoned_features[poisoned_bases==K, 1],
-            c='k', marker='x'
+            c=colors[K], marker='^'
         )
     ax.legend()
     save_path = os.path.join(save_dir, 'distribution.png')
