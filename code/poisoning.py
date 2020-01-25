@@ -36,8 +36,12 @@ def get_opts():
     p.add_argument('--poisoning_strength', type=int, default=.1, help='fraction'
                    'of dataset which is allowed to be poisoned. number in the'
                    ' range [0, 1]')
+    p.add_argument('--beta', type=float, default=0.25, help='beta parameter '
+                   'for poisoning algorithm')
     p.add_argument('--poison_lr', type=float, default=255*500., help='learning '
                    'rate for poisoning algorithm.')
+    p.add_argument('--loss_thres', type=float, default=2.9, help='the loss '
+                   'threshold after which to stop optimizing for poison generation')
     p.add_argument('--overlay', action='store_true', help='add overlay before'
                    ' optimizing for poison.')
     p.add_argument('--overlay_alpha', action='store', type=float,
@@ -156,7 +160,7 @@ def compute_loss(model, curr_poison, base_img, target_img, beta_zero):
     return out
 
 def generate_poison(target_img, base_img, model, logger, beta=0.25, max_iters=1000,
-                 loss_thres=1e-4, lr=500.*255, decay_coeff=.5, min_val=-1.,
+                 loss_thres=2.9, lr=500.*255, decay_coeff=.5, min_val=-1.,
                  max_val=1., overlay=False, overlay_alpha=0.2):
     """
     Generates poison according to Poison Frogs paper.
@@ -322,7 +326,7 @@ def draw_comparison_fig(poison, target, base, filepath):
         x = x.permute(1, 2, 0)
         if x.shape[-1] == 1:
             x = x[:, :, 0]
-        return x
+        return x.cpu()
     
     poison, target, base = _reshape(poison), _reshape(target), _reshape(base)
     ax[0].imshow(base, cmap='gray')
@@ -410,7 +414,9 @@ if __name__ == '__main__':
         logger.info("Crafting Poison")
         logger.info("Target: {}, Base: {}".format(target_label, base_label))
         poison, _ = generate_poison(target_img, base_img, model,
-                                     logger, lr=opts.poison_lr,
+                                     logger, beta=opts.beta,
+                                     loss_thres=opts.loss_thres,
+                                     lr=opts.poison_lr,
                                      overlay=opts.overlay,
                                      overlay_alpha=opts.overlay_alpha)
         poisons.append(poison)
