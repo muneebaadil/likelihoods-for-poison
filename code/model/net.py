@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from .lgm import LGMLoss_v0, LGMLoss
 
@@ -95,4 +96,48 @@ class CIFARNet(nn.Module):
             ip2 = self.classifier(ip1)
             return ip2, ip1
         else:
-            return ip1
+            return None, ip1
+
+
+class VGG(nn.Module):
+
+    def __init__(self, vgg_name, use_lgm=False):
+
+        super(VGG, self).__init__()
+
+        self.base = self._make_layers(cfg[vgg_name])
+        # self.classifier = nn.Linear(512, 10)
+        self.use_lgm = use_lgm
+
+        if self.use_lgm:
+            self.lgm = LGMLoss_v0(10, 50, alpha=1.0)
+        else:
+            self.classifer = nn.Linear(50, 10)
+
+    def forward(self, x):
+
+        ip1 = self.base(x)
+        # ip1 = ip1.view(ip1.size(0), -1)
+        if not self.use_lgm:
+            ip2 = self.classifier(ip1)
+            return ip2, ip1
+        else:
+            return None, ip1
+
+    def _make_layers(self, cfg):
+
+        layers = []
+        in_channels = 3
+
+        for x in cfg:
+            if x == 'M':
+                layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
+            else:
+                layers += [nn.Conv2d(in_channels, x, kernel_size=3, padding=1),
+                           nn.BatchNorm2d(x),
+                           nn.ReLU(inplace=True)]
+                in_channels = x
+        layers += [nn.AvgPool2d(kernel_size=1, stride=1)]
+        layers += [nn.Flatten()]
+        layers += [nn.Linear(512, 50)]
+        return nn.Sequential(*layers)
