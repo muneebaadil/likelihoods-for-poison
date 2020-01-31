@@ -66,6 +66,10 @@ def test(test_loder, model, opts):
 
     correct = 0
     total = 0
+
+    ip1_loader = []
+    idx_loader = []
+
     for i, (data, target) in enumerate(test_loder):
         if opts.use_cuda:
             data = data.cuda()
@@ -77,6 +81,13 @@ def test(test_loder, model, opts):
         _, predicted = torch.max(logits.data, 1)
         total += target.size(0)
         correct += (predicted == target.data).sum()
+
+        ip1_loader.append(feats)
+        idx_loader.append(target)
+
+    feat = torch.cat(ip1_loader, 0)
+    labels = torch.cat(idx_loader, 0)
+    visualize(feat.data.cpu().numpy(), labels.data.cpu().numpy(), 0, prefix=opts.ckpt_name)
 
     print('Test Accuracy of the model on the 10000 test images: %f %%' % (100 * correct / total))
 
