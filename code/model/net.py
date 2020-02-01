@@ -99,20 +99,29 @@ class CIFARNet(nn.Module):
             return None, ip1
 
 
+cfg = {
+    'VGG11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'VGG13': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'VGG16': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
+    'VGG19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
+}
+
+
 class VGG(nn.Module):
 
     def __init__(self, vgg_name, use_lgm=False):
 
         super(VGG, self).__init__()
 
+        self.gauss_dim = 2
+
         self.base = self._make_layers(cfg[vgg_name])
-        # self.classifier = nn.Linear(512, 10)
         self.use_lgm = use_lgm
 
         if self.use_lgm:
-            self.lgm = LGMLoss_v0(10, 50, alpha=1.0)
+            self.lgm = LGMLoss_v0(10, self.gauss_dim, alpha=1.0)
         else:
-            self.classifer = nn.Linear(50, 10)
+            self.classifer = nn.Linear(self.gauss_dim, 10)
 
     def forward(self, x):
 
@@ -139,5 +148,5 @@ class VGG(nn.Module):
                 in_channels = x
         layers += [nn.AvgPool2d(kernel_size=1, stride=1)]
         layers += [nn.Flatten()]
-        layers += [nn.Linear(512, 50)]
+        layers += [nn.Linear(512, self.gauss_dim)]
         return nn.Sequential(*layers)
