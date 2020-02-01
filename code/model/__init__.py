@@ -15,6 +15,9 @@ def get_model(opts, logger):
     elif opts.model == 'net':
         import model.net as net
         model = net.MNISTNet()
+    elif opts.model == 'cifarnet':
+        import model.net as net
+        model = net.VGG(vgg_name='VGG16')
     else:
         raise NotImplementedError()
 
