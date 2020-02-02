@@ -8,4 +8,9 @@
 
 # 0.0083 works best, turns out.
 
-# NOW GENERATE POISONS FOR 10% OF THE DATASET USING NEAREST AND RANDOM STRATEGY.
+# NOW GENERATE POISONS FOR 10% OF THE DATASET USING RANDOM STRATEGY.
+# GENERATING 1000 POISONS FOR SOFTMAX
+# python poisoning.py --dataset mnist --method softmax --ckpt_path ../experiments/softmax_mnist/models/epoch-best.model --base_strategy random --seed 176 --max_poisons 1000 --beta 0.0083 --poison_lr 38250000 --normalize_feats --loss_thres 1e-4 --exp_name mnist_softmax_poisons
+
+# GENERATING 1000 POISONS FOR LGM
+# python poisoning.py --dataset mnist --method lgm --ckpt_path ../experiments/lgm_mnist/lgm-model --base_strategy random --seed 176 --max_poisons 1000 --beta 0.0083 --poison_lr 38250000 --normalize_feats --loss_thres 1e-4 --exp_name mnist_lgm_poisons
