@@ -8,6 +8,7 @@ class Poison(Dataset):
 
     def __init__(self, path, transform, return_targets=False):
         self.path = path
+        raise NotImplementedError("now I am adding more files to directory")
         self.img_paths = glob(os.path.join(self.path, "*/*.png"))
         self.return_targets = return_targets
         self.transform = transform
