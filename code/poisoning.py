@@ -378,7 +378,7 @@ if __name__ == '__main__':
     else:
         logger.info("Seed: {}".format(opts.seed))
 
-    if opts.datset == 'mnist':
+    if opts.dataset == 'mnist':
         model = net.MNISTNet(use_lgm=opts.use_lgm).to(opts.device).eval()
         t = transforms.Compose((
             transforms.ToTensor(),
@@ -395,18 +395,13 @@ if __name__ == '__main__':
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
         )
         data = datasets.CIFAR10(
-            root=DATA_ROOT_PATH, train=False, download=True, transform=t
+            root='../datasets/', train=False, download=True, transform=t
         )
-
-    model.load_state_dict(torch.load(opts.ckpt_path,
-                                     map_location=opts.device))
-    if opts.dataset.lower() == 'mnist':
-        
-    elif opts.dataset.lower() == 'cifar10':
-        raise NotImplementedError()
     else:
         raise NotImplementedError()
 
+    model.load_state_dict(torch.load(opts.ckpt_path,
+                                     map_location=opts.device))
     loader_temp = DataLoader(data, batch_size=64, shuffle=False,
                         num_workers=opts.n_workers, pin_memory=False)
     X_test, Y_test = [], []
