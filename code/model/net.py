@@ -121,7 +121,7 @@ class VGG(nn.Module):
         if self.use_lgm:
             self.lgm = LGMLoss_v0(10, self.gauss_dim, alpha=1.0)
         else:
-            self.classifer = nn.Linear(self.gauss_dim, 10)
+            self.classifier = nn.Linear(self.gauss_dim, 10)
 
     def forward(self, x):
 

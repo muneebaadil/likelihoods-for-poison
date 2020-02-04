@@ -207,7 +207,7 @@ def validate(loader, model, criterion, lr_scheduler, logger, device,
 
     val_feats = torch.cat(val_feats, dim=0)
     val_labels = torch.cat(val_labels, dim=0)
-    logger.draw_features(curr_global_iter, val_feats, val_labels)
+    # logger.draw_features(curr_global_iter, val_feats, val_labels)
 
     if lr_scheduler:
         lr_scheduler.step()
