@@ -102,7 +102,7 @@ class LGMUtils:
         # The assumption is that LGM should return lower likelihood of X  belonging to `claimed_class`
         # if X is poisoned.
 
-        feats = model(X)
+        _, feats = model(X)
         logits, _, _ = model.lgm(feat=feats, label=claimed_class)
         _, predicted = torch.max(logits.data, 1)
         return predicted != claimed_class
@@ -118,7 +118,7 @@ class LGMUtils:
         with torch.no_grad():
 
             # computer 2D features under learned likelihood
-            feats = model(X)
+            _, feats = model(X)
             # feature mean of class X is claiming to belong to
             fmean = model.lgm.centers[claimed_class]
             # likelihood (as explained in 1st para of Adversarial Verification section in 4.3)
@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     trainset = datasets.MNIST('../datasets/', download=True, train=True, transform=tfsm)
     train_loader = DataLoader(trainset, batch_size=bsize, shuffle=False, num_workers=4)
-    poisoned_dataset = Poison('../experiments/debug/poisons', tfsm)
+    poisoned_dataset = Poison('../experiments/mnist_lgm_poisons/lgm-model', tfsm)
     poisoned_loader = DataLoader(poisoned_dataset, batch_size=bsize, shuffle=False, num_workers=4)
 
     # load a model
@@ -151,24 +151,24 @@ if __name__ == "__main__":
     import pdb
     import matplotlib.pyplot as plt
     import numpy as np
+    import scikitplot as skplt
 
     model = MNISTNet(use_lgm=True).cuda()
-    model.load_state_dict(torch.load('../checkpoints/LGM/LGM40.epoch-60-.model'),
-                          strict=False)
+    model.load_state_dict(torch.load('../experiments/lgm_mnist/lgm-model'), strict=False)
 
     lkd_hist = []
-    for X, Y in train_loader:
+    for i, (X, Y) in enumerate(train_loader):
         X = X.cuda()
         Y = Y.cuda()
         lkd = LGMUtils.get_likelihood(model, Y, X)
         lkd_hist.extend(lkd.cpu().numpy())
-        if i*bsize >= 100: break
+        #if i*bsize >= 100: break
 
-    plt.ion()
-    plt.clf()
-    n, b, p = plt.hist(lkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='green', alpha=0.7)
-    plt.gca().set_title("Lkd on normal")
-    plt.savefig("./hist_normal.jpg")
+    #plt.ion()
+    #plt.clf()
+    #n, b, p = plt.hist(lkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='green', alpha=0.7)
+    #plt.gca().set_title("Lkd on normal")
+    #plt.savefig("./hist_normal.jpg")
 
     plkd_hist = []
     for X, Y, _ in poisoned_loader:
@@ -177,10 +177,50 @@ if __name__ == "__main__":
         lkd = LGMUtils.get_likelihood(model, Y, X)
         plkd_hist.extend(lkd.cpu().numpy())
 
-    plt.ion()
-    plt.clf()
-    n, b, p = plt.hist(plkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='orange', alpha=0.7)
-    plt.gca().set_title("Lkd on poisoned")
-    plt.savefig("./hist_poisoned.jpg")
+    #plt.ion()
+    #plt.clf()
+    #n, b, p = plt.hist(plkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', facecolor='orange', alpha=0.7)
+    #plt.gca().set_title("Lkd on poisoned")
+    #plt.savefig("./hist_poisoned.jpg")
+
+    fig, ax1 = plt.subplots()
+    color = 'tab:green'
+    ax1.set_xlabel('Likelihood Histogram')
+    ax1.set_ylabel('Clean Data')
+    ax1.hist(lkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', histtype='bar', color=color, alpha=0.7,
+             label='Clean Data')
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    color = 'tab:red'
+    ax2 = ax1.twinx()
+    ax2.set_ylabel('Poisoned Data')
+    ax2.hist(plkd_hist, bins=np.arange(0, 1.05, 0.05), align='mid', histtype='bar', color=color, alpha=0.7,
+             label='Poisoned Data')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    # fig.tight_layout()
+    plt.gca().set_title('Likelihood histogram on normal and poisoned data')
+    ax1.legend(loc=1)
+    ax2.legend(loc=2)
+    plt.savefig('./histall.jpg')
+
+    # plot ROC
+
+    Y = np.concatenate((np.zeros(len(lkd_hist)), np.ones(len(plkd_hist))))
+    Y = Y.reshape(len(Y), 1)
+    print(Y.shape)
+
+    lkd_hist = np.array(lkd_hist).reshape(len(lkd_hist), 1)
+    lkd_hist = np.concatenate((lkd_hist, 1 - lkd_hist), axis=1)
+
+    plkd_hist = np.array(plkd_hist).reshape(len(plkd_hist), 1)
+    plkd_hist = np.concatenate((plkd_hist, 1 - plkd_hist), axis=1)
+
+    # clean_data_prob = np.zeros(len(lkd_hist),2)
+    Yp = np.concatenate((lkd_hist, plkd_hist))
+    # Yp = Yp.reshape(len(Yp),1)
+    print(Yp.shape)
+    skplt.metrics.plot_roc(Y, Yp, classes_to_plot=[0], plot_micro=False, plot_macro=False, title="ROC Curve")
+    plt.savefig('./roc.jpg')
 
     print("done")
