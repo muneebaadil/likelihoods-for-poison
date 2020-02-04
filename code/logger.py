@@ -44,7 +44,7 @@ class Logger(object):
         if to_save:
             save_name = 'epoch-%d.model' % (epoch+1) \
                 if self.opts.save_every_ckpt else 'epoch-best.model'
-            torch.save(model.cpu().state_dict(), os.path.join(
+            torch.save(model.state_dict(), os.path.join(
                 self.opts.save_dir_model, save_name))
 
             log_str = "Checkpoint saved at %s" % os.path.join(
