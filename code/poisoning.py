@@ -36,6 +36,7 @@ def get_opts():
     p.add_argument('--poisoning_strength', type=int, default=.1, help='fraction'
                    'of dataset which is allowed to be poisoned. number in the'
                    ' range [0, 1]')
+    p.add_argument('--max_iters', type=int, default=1000)
     p.add_argument('--beta', type=float, default=0.25, help='beta parameter '
                    'for poisoning algorithm')
     p.add_argument('--poison_lr', type=float, default=255*500., help='learning '
@@ -294,6 +295,8 @@ def get_features(X, model, logger):
 def draw_features(clean_features, clean_labels, poisoned_features, 
                   poisoned_bases, poisoned_targets, save_dir, logger,
                   n_classes=10):
+    import matplotlib.lines as mlines
+
     if (clean_features.shape[1] != 2):
         raise NotImplementedError("Draw feautres only implemented with"
                                     "2 features")
@@ -304,8 +307,7 @@ def draw_features(clean_features, clean_labels, poisoned_features,
         ax.scatter(
             clean_features[clean_labels == K, 0],
             clean_features[clean_labels == K, 1],
-            label='Class = {}'.format(K),
-            c=colors[K], alpha=0.3
+            c=colors[K], alpha=0.2, marker='x'
         )
     for K in range(n_classes):
         ax.scatter(
@@ -313,7 +315,13 @@ def draw_features(clean_features, clean_labels, poisoned_features,
             poisoned_features[poisoned_bases==K, 1],
             c=colors[K], marker='^'
         )
-    ax.legend()
+    legend_p = mlines.Line2D([], [], color='black', marker='^',
+                          markersize=7, label='Poisons', linestyle='None')
+    legend_c = mlines.Line2D([], [], color='black', marker='x',
+                            markersize=7, label='Clean', linestyle='None')
+    ax.legend(handles=[legend_p, legend_c])
+    ax.set_xlabel("Feature 1")
+    ax.set_ylabel("Feature 2")
     save_path = os.path.join(save_dir, 'distribution.png')
     plt.savefig(os.path.join(save_path))
     logger.info("Saved feature distributions at {}".format(save_path))
@@ -414,7 +422,8 @@ if __name__ == '__main__':
         logger.info("Crafting Poison")
         logger.info("Target: {}, Base: {}".format(target_label, base_label))
         poison, _ = generate_poison(target_img, base_img, model,
-                                     logger, beta=opts.beta,
+                                     logger, max_iters=opts.max_iters,
+                                     beta=opts.beta,
                                      loss_thres=opts.loss_thres,
                                      lr=opts.poison_lr,
                                      overlay=opts.overlay,
@@ -427,20 +436,32 @@ if __name__ == '__main__':
 
         # save crafted poison
         filename = '{}_{}_{}.png'.format(base_label, base_idx, i)
+        filename_t = '{}_{}_{}_t.png'.format(base_label, base_idx, i)
+        filename_b = '{}_{}_{}_b.png'.format(base_label, base_idx, i)
+
         filepath = os.path.join(opts.save_dir, 'poisons',
                                 opts.folder_names[target_label],
                                 filename)
+        filepath_t = os.path.join(opts.save_dir, 'poisons',
+                                opts.folder_names[target_label],
+                                filename_t)
+        filepath_b = os.path.join(opts.save_dir, 'poisons',
+                                opts.folder_names[target_label],
+                                filename_b)
+
         save_image(poison, filepath, normalize=True, range=(-1, 1))
-        logger.info("Saved image to {}".format(filepath))
+        save_image(target_img.squeeze(0), filepath_t, normalize=True, range=(-1, 1))
+        save_image(base_img.squeeze(0), filepath_b, normalize=True, range=(-1, 1))
+        logger.info("Saved poison data to {}_[t|b]".format(filepath))
 
         # save comparison matplotlib figure
-        filename_fig = '{}_{}_{}_fig.png'.format(base_label, base_idx, i)
-        filepath_fig = os.path.join(opts.save_dir, 'poisons',
-                                opts.folder_names[target_label],
-                                filename_fig)
+        # filename_fig = '{}_{}_{}_fig.png'.format(base_label, base_idx, i)
+        # filepath_fig = os.path.join(opts.save_dir, 'poisons',
+        #                         opts.folder_names[target_label],
+        #                         filename_fig)
         # pdb.set_trace()
-        draw_comparison_fig(poison.data, target_img.squeeze(0),
-                            base_img.squeeze(0), filepath_fig)
+        # draw_comparison_fig(poison.data, target_img.squeeze(0),
+        #                     base_img.squeeze(0), filepath_fig)
 
     # compute features now for drawing them.
     poisons = torch.cat(poisons)

@@ -8,7 +8,15 @@ class Poison(Dataset):
 
     def __init__(self, path, transform, return_targets=False):
         self.path = path
+        # raise NotImplementedError("now I am adding more files to directory")
         self.img_paths = glob(os.path.join(self.path, "*/*.png"))
+
+        # removing orignal base and target images from the crosshairs.
+        self.img_paths = [x for x in self.img_paths if \
+            x[-5] not in ['t', 'b']]
+
+        assert len(self.img_paths) == 100 # there should be 100 poison instances.
+
         self.return_targets = return_targets
         self.transform = transform
 
@@ -36,11 +44,12 @@ if __name__ == '__main__':
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,)))
     )
-    dataset = Poison('../../experiments/debug/poisons', t)
+    dataset = Poison('../../experiments/mnist_softmax_poisons/poisons/', t)
     loader = DataLoader(dataset, batch_size=1, shuffle=False,
                         num_workers=1)
     
     # import pdb
+    # pdb.set_trace()
     # for sample in loader:
     #     pdb.set_trace()
     #     pass
