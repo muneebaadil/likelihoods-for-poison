@@ -74,10 +74,6 @@ with torch.no_grad():
         # if (min_feat_val is None) or (_min < min_feat_val):
         #     min_feat_val = _min.item()
 
-# print("Max: {}; Min: {}".format(max_feat_val, min_feat_val))
-# print("maxs = {}".format(maxs))
-# print("mins = {}".format(mins))
-
 # save max and min vals
-torch.save(maxs, 'maxs_{}_{}.pt', DATASET, METHOD)
-torch.save(mins, 'mins_{}_{}.pt', DATASET, METHOD)
+torch.save(maxs, 'maxs_{}_{}.pt'.format(DATASET, METHOD))
+torch.save(mins, 'mins_{}_{}.pt'.format(DATASET, METHOD))
