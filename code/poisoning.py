@@ -123,21 +123,38 @@ def get_opts():
         raise NotImplementedError()
 
     # feature scaling.
-    if opts.method == 'softmax':
-        opts.feats_max = torch.tensor([334.7420, 209.5980])
-        opts.feats_min = torch.tensor([-259.4084, -381.4945])
-        opts.feats_max = opts.feats_max.to(opts.device)
-        opts.feats_min = opts.feats_min.to(opts.device)
+    if opts.dataset == 'mnist':
+        if opts.method == 'softmax':
+            opts.feats_max = torch.tensor([334.7420, 209.5980])
+            opts.feats_min = torch.tensor([-259.4084, -381.4945])
+            opts.feats_max = opts.feats_max.to(opts.device)
+            opts.feats_min = opts.feats_min.to(opts.device)
 
-        opts.feats_range = opts.feats_max - opts.feats_min
-    elif opts.method == 'lgm':
-        opts.feats_max = torch.tensor([6.0089, 5.3333])
-        opts.feats_min = torch.tensor([-6.5698, -5.4916])
-        opts.feats_max = opts.feats_max.to(opts.device)
-        opts.feats_min = opts.feats_min.to(opts.device)
-        opts.feats_range = opts.feats_max - opts.feats_min
+            opts.feats_range = opts.feats_max - opts.feats_min
+        elif opts.method == 'lgm':
+            opts.feats_max = torch.tensor([6.0089, 5.3333])
+            opts.feats_min = torch.tensor([-6.5698, -5.4916])
+            opts.feats_max = opts.feats_max.to(opts.device)
+            opts.feats_min = opts.feats_min.to(opts.device)
+            opts.feats_range = opts.feats_max - opts.feats_min
+        else:
+            raise NotImplementedError()
+
+    elif opts.dataset == 'cifar10':
+        if opts.method == 'lgm':
+            opts.feats_max = torch.load('./maxs_cifar10_lgm.pt')
+            opts.feats_min = torch.load("./mins_cifar10_lgm.pt")
+
+            opts.feats_max = opts.feats_max.to(opts.device)
+            opts.feats_min = opts.feats_min.to(opts.device)
+
+            opts.feats_range = opts.feats_max - opts.feats_min
+
+        else:
+            raise NotImplementedError()
     else:
         raise NotImplementedError()
+            
 
     return opts
 
@@ -361,17 +378,30 @@ if __name__ == '__main__':
     else:
         logger.info("Seed: {}".format(opts.seed))
 
-    model = net.MNISTNet(use_lgm=opts.use_lgm).to(opts.device).eval()
-    model.load_state_dict(torch.load(opts.ckpt_path,
-                                     map_location=opts.device))
-    t = transforms.Compose((
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,)))
-    )
-    if opts.dataset.lower() == 'mnist':
+    if opts.datset == 'mnist':
+        model = net.MNISTNet(use_lgm=opts.use_lgm).to(opts.device).eval()
+        t = transforms.Compose((
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,)))
+        )
         data = datasets.MNIST(
             root='../datasets/', train=False, download=True, transform=t
         )
+
+    elif opts.dataset == 'cifar10':
+        model = net.VGG('VGG19', use_lgm=opts.use_lgm)
+        t = transforms.Compose((
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
+        )
+        data = datasets.CIFAR10(
+            root=DATA_ROOT_PATH, train=False, download=True, transform=t
+        )
+
+    model.load_state_dict(torch.load(opts.ckpt_path,
+                                     map_location=opts.device))
+    if opts.dataset.lower() == 'mnist':
+        
     elif opts.dataset.lower() == 'cifar10':
         raise NotImplementedError()
     else:
