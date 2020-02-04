@@ -10,6 +10,7 @@ import argparse
 import os
 from model.net import MNISTNet
 from model.net import CIFARNet
+from model.net import VGG
 
 import matplotlib
 matplotlib.use('Agg')
@@ -133,7 +134,7 @@ def main(opts):
     trainset, train_loader, testset, test_loader = get_dataset(opts.dataset, data_dir='../datasets/',
                                                                batch_size=opts.train_batch_size)
 
-    model = MNISTNet(use_lgm=True) if opts.dataset == "mnist" else CIFARNet(use_lgm=True)
+    model = MNISTNet(use_lgm=True) if opts.dataset == "mnist" else VGG(vgg_name='VGG19', use_lgm=True)
 
     if opts.load_ckpt:
         model.load_state_dict(torch.load(opts.load_ckpt), strict=False)
